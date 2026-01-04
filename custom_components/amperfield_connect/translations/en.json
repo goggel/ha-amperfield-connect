@@ -1,0 +1,91 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Amperfield Wallbox Connect",
+        "description": "Configure your Amperfield Wallbox connection",
+        "data": {
+          "host": "IP Address or Hostname",
+          "port": "Port",
+          "scan_interval": "Scan Interval (seconds)",
+          "name_prefix": "Name Prefix"
+        },
+        "data_description": {
+          "name_prefix": "Prefix for all entity names (useful when you have multiple wallboxes)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the Wallbox. Please check the IP address and port.",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "phase_switching_available": { "name": "Phase switching" }
+    },
+    "sensor": {
+      "charging_state": {
+        "name": "Charging state",
+        "state": {
+          "no_vehicle_connected": "No vehicle connected",
+          "vehicle_ready_to_connect": "Vehicle ready to connect",
+          "vehicle_connected": "Vehicle connected",
+          "vehicle_ready_to_charge": "Vehicle ready to charge",
+          "charging_paused": "Charging paused",
+          "charging": "Charging",
+          "derating": "Derating",
+          "error": "Error",
+          "not_ready": "Not ready",
+          "fault": "Fault"
+        }
+      },
+      "current_l1": { "name": "Current L1" },
+      "current_l2": { "name": "Current L2" },
+      "current_l3": { "name": "Current L3" },
+      "voltage_l1": { "name": "Voltage L1" },
+      "voltage_l2": { "name": "Voltage L2" },
+      "voltage_l3": { "name": "Voltage L3" },
+      "power": { "name": "Power" },
+      "power_l1": { "name": "Power L1" },
+      "power_l2": { "name": "Power L2" },
+      "power_l3": { "name": "Power L3" },
+      "temperature": { "name": "Temperature" },
+      "energy_poweron": { "name": "Energy since power on" },
+      "energy_installation": { "name": "Energy since installation" },
+      "energy_cycle": { "name": "Energy charge cycle" },
+      "hw_max_current": { "name": "Hardware max current" },
+      "firmware_version": { "name": "Firmware version" },
+      "item_number": { "name": "Model" },
+      "phase_switch_state": {
+        "name": "Phase switch state",
+        "state": {
+          "switching_in_progress": "Switching in progress",
+          "1_phase": "1 Phase",
+          "3_phases": "3 Phases"
+        }
+      },
+      "max_power_set": { "name": "Maximum power set" }
+    },
+    "number": {
+      "max_current": { "name": "Maximum current" },
+      "failsafe_current": { "name": "Failsafe current" },
+      "max_power_target": { "name": "Maximum power target" }
+    },
+    "switch": {
+      "remote_lock": { "name": "Charging locked" }
+    },
+    "select": {
+      "charging_strategy": {
+        "name": "Charging strategy",
+        "state": {
+          "manual_mode": "Manual Mode",
+          "solar_eco_mode": "Solar/Eco Mode"
+        }
+      }
+    }
+  }
+}

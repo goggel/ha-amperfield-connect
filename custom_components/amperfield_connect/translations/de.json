@@ -1,0 +1,91 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Amperfield Wallbox Connect",
+        "description": "Konfigurieren Sie die Verbindung zu Ihrer Amperfield Wallbox",
+        "data": {
+          "host": "IP-Adresse oder Hostname",
+          "port": "Port",
+          "scan_interval": "Aktualisierungsintervall (Sekunden)",
+          "name_prefix": "Namenspräfix"
+        },
+        "data_description": {
+          "name_prefix": "Präfix für alle Entitätsnamen (nützlich bei mehreren Wallboxen)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zur Wallbox fehlgeschlagen. Bitte überprüfen Sie die IP-Adresse und den Port.",
+      "unknown": "Ein unerwarteter Fehler ist aufgetreten"
+    },
+    "abort": {
+      "already_configured": "Gerät ist bereits konfiguriert"
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "phase_switching_available": {"name": "Phasenumschaltung"}
+    },
+    "sensor": {
+      "charging_state": {
+        "name": "Ladezustand",
+        "state": {
+          "no_vehicle_connected": "Kein Fahrzeug angeschlossen",
+          "vehicle_ready_to_connect": "Fahrzeug bereit zum Anschließen",
+          "vehicle_connected": "Fahrzeug angeschlossen",
+          "vehicle_ready_to_charge": "Fahrzeug bereit zum Laden",
+          "charging_paused": "Laden pausiert",
+          "charging": "Lädt",
+          "derating": "Leistungsreduzierung",
+          "error": "Fehler",
+          "not_ready": "Nicht bereit",
+          "fault": "Störung"
+        }
+      },
+      "current_l1": {"name": "Strom L1"},
+      "current_l2": {"name": "Strom L2"},
+      "current_l3": {"name": "Strom L3"},
+      "voltage_l1": {"name": "Spannung L1"},
+      "voltage_l2": {"name": "Spannung L2"},
+      "voltage_l3": {"name": "Spannung L3"},
+      "power": {"name": "Leistung"},
+      "power_l1": {"name": "Leistung L1"},
+      "power_l2": {"name": "Leistung L2"},
+      "power_l3": {"name": "Leistung L3"},
+      "temperature": {"name": "Temperatur"},
+      "energy_poweron": {"name": "Energie seit Einschalten"},
+      "energy_installation": {"name": "Energie seit Installation"},
+      "energy_cycle": {"name": "Energie Ladezyklus"},
+      "hw_max_current": {"name": "Hardware Maximalstrom"},
+      "firmware_version": {"name": "Firmware-Version"},
+      "item_number": {"name": "Modell"},
+      "phase_switch_state": {
+        "name": "Phasenumschaltzustand",
+        "state": {
+          "switching_in_progress": "Umschaltung läuft",
+          "1_phase": "1 Phase",
+          "3_phases": "3 Phasen"
+        }
+      },
+      "max_power_set": {"name": "Maximale Leistung eingestellt"}
+    },
+    "number": {
+      "max_current": {"name": "Maximalstrom"},
+      "failsafe_current": {"name": "Failsafe Strom"},
+      "max_power_target": {"name": "Maximale Zielleistung"}
+    },
+    "switch": {
+      "remote_lock": {"name": "Laden gesperrt"}
+    },
+    "select": {
+      "charging_strategy": {
+        "name": "Ladestrategie",
+        "state": {
+          "manual_mode": "Manueller Modus",
+          "solar_eco_mode": "Solar-/Öko-Modus"
+        }
+      }
+    }
+  }
+}

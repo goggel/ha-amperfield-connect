@@ -1,0 +1,8 @@
+{
+  "name": "Amperfield Wallbox Connect",
+  "content_in_root": false,
+  "render_readme": true,
+  "domains": ["sensor", "number", "switch", "select"],
+  "iot_class": "Local Polling",
+  "homeassistant": "2025.12.0"
+}
