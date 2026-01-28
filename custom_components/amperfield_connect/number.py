@@ -11,7 +11,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_NAME_PREFIX, DEFAULT_NAME_PREFIX, DOMAIN, MODEL_MAPPING
+from . import AmperfieldDataUpdateCoordinator
+from .const import DOMAIN
 from .modbus_client import AmperfieldModbusClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,30 +24,12 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Amperfield number entities from a config entry."""
-    client: AmperfieldModbusClient = hass.data[DOMAIN][config_entry.entry_id]
-    name_prefix = config_entry.data.get(CONF_NAME_PREFIX, DEFAULT_NAME_PREFIX)
-
-    # Get device info
-    serial_number = await hass.async_add_executor_job(client.get_serial_number)
-    firmware_version = await hass.async_add_executor_job(client.get_firmware_version)
-    item_number = await hass.async_add_executor_job(client.get_item_number)
-
-    # Get friendly model name from mapping
-    model_name = MODEL_MAPPING.get(item_number, f"Unknown ({item_number})") if item_number else "Unknown"
-
-    device_info = DeviceInfo(
-        identifiers={(DOMAIN, serial_number or config_entry.entry_id)},
-        name=f"Wallbox {serial_number}" if serial_number else "Amperfield Wallbox",
-        manufacturer="Amperfield",
-        model=model_name,
-        sw_version=firmware_version,
-        serial_number=serial_number,
-    )
-
-    # Get hardware max current to set the proper range
-    hw_max_current = await hass.async_add_executor_job(client.get_hardware_max_current)
-    if hw_max_current is None:
-        hw_max_current = 16  # Default to 16A
+    data = hass.data[DOMAIN][config_entry.entry_id]
+    client: AmperfieldModbusClient = data["client"]
+    coordinator: AmperfieldDataUpdateCoordinator = data["coordinator"]
+    device_info: DeviceInfo = data["device_info"]
+    name_prefix: str = data["name_prefix"]
+    hw_max_current: int = data["hw_max_current"]
 
     entities = [
         AmperfieldMaxCurrentNumber(client, device_info, name_prefix, hw_max_current),
@@ -54,8 +37,7 @@ async def async_setup_entry(
     ]
 
     # Add max power target control if phase switching is available (solar/solar pro)
-    phase_switch_state = await hass.async_add_executor_job(client.get_phase_switch_state)
-    if phase_switch_state is not None:
+    if coordinator.data.get("phase_switch_state") is not None:
         entities.append(AmperfieldMaxPowerNumber(client, device_info, name_prefix, hw_max_current))
 
     async_add_entities(entities)
@@ -170,6 +152,8 @@ class AmperfieldMaxPowerNumber(AmperfieldNumberBase):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value."""
-        # Set the power target, wallbox will automatically switch phases
         watts = int(value)
+        # Minimum charging power is 1400W (6A * 230V), round up if between 1-1399
+        if 1 <= watts < 1400:
+            watts = 1400
         await self.hass.async_add_executor_job(self.client.set_max_power_target, watts)

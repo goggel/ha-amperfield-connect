@@ -70,6 +70,69 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle reconfiguration of an existing entry."""
+        reconfigure_entry = self._get_reconfigure_entry()
+
+        if user_input is None:
+            return self.async_show_form(
+                step_id="reconfigure",
+                data_schema=vol.Schema(
+                    {
+                        vol.Required(
+                            CONF_HOST, default=reconfigure_entry.data.get(CONF_HOST)
+                        ): str,
+                        vol.Required(
+                            CONF_PORT, default=reconfigure_entry.data.get(CONF_PORT, DEFAULT_PORT)
+                        ): int,
+                        vol.Optional(
+                            CONF_SCAN_INTERVAL,
+                            default=reconfigure_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                        ): int,
+                        vol.Optional(
+                            CONF_NAME_PREFIX,
+                            default=reconfigure_entry.data.get(CONF_NAME_PREFIX, DEFAULT_NAME_PREFIX),
+                        ): str,
+                    }
+                ),
+            )
+
+        errors = {}
+
+        try:
+            await validate_input(self.hass, user_input)
+        except CannotConnect:
+            errors["base"] = "cannot_connect"
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unexpected exception")
+            errors["base"] = "unknown"
+        else:
+            return self.async_update_reload_and_abort(
+                reconfigure_entry,
+                data_updates=user_input,
+            )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_HOST, default=user_input.get(CONF_HOST)): str,
+                    vol.Required(CONF_PORT, default=user_input.get(CONF_PORT, DEFAULT_PORT)): int,
+                    vol.Optional(
+                        CONF_SCAN_INTERVAL,
+                        default=user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                    ): int,
+                    vol.Optional(
+                        CONF_NAME_PREFIX,
+                        default=user_input.get(CONF_NAME_PREFIX, DEFAULT_NAME_PREFIX),
+                    ): str,
+                }
+            ),
+            errors=errors,
+        )
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:

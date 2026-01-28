@@ -13,6 +13,19 @@
         "data_description": {
           "name_prefix": "Prefix for all entity names (useful when you have multiple wallboxes)"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Wallbox",
+        "description": "Update the connection settings for your Amperfield Wallbox",
+        "data": {
+          "host": "IP Address or Hostname",
+          "port": "Port",
+          "scan_interval": "Scan Interval (seconds)",
+          "name_prefix": "Name Prefix"
+        },
+        "data_description": {
+          "name_prefix": "Prefix for all entity names (useful when you have multiple wallboxes)"
+        }
       }
     },
     "error": {
@@ -25,7 +38,8 @@
   },
   "entity": {
     "binary_sensor": {
-      "phase_switching_available": { "name": "Phase switching" }
+      "phase_switching_available": { "name": "Phase switching" },
+      "vehicle_connected": { "name": "Vehicle connected" }
     },
     "sensor": {
       "charging_state": {
@@ -33,8 +47,8 @@
         "state": {
           "no_vehicle_connected": "No vehicle connected",
           "vehicle_ready_to_connect": "Vehicle ready to connect",
-          "vehicle_connected": "Vehicle connected",
           "vehicle_ready_to_charge": "Vehicle ready to charge",
+          "waiting_for_release": "Waiting for wallbox release",
           "charging_paused": "Charging paused",
           "charging": "Charging",
           "derating": "Derating",

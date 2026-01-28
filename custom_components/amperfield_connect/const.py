@@ -60,8 +60,8 @@ REG_DISCONNECT_SIMULATION_STATUS = 5003
 CHARGING_STATES = {
     2: "no_vehicle_connected",
     3: "vehicle_ready_to_connect",
-    4: "vehicle_connected",
-    5: "vehicle_ready_to_charge",
+    4: "vehicle_ready_to_charge",
+    5: "waiting_for_release",
     6: "charging_paused",
     7: "charging",
     8: "derating",

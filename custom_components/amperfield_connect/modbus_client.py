@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+import threading
+from contextlib import contextmanager
+from typing import Any, Generator
 
 from pymodbus.client import ModbusTcpClient
 
@@ -51,30 +53,59 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class AmperfieldModbusClient:
-    """Modbus client for Amperfield Wallbox."""
+    """Modbus client for Amperfield Wallbox.
+
+    The wallbox only accepts ONE Modbus TCP connection at a time.
+    This client uses a lock to ensure thread-safety and connects/disconnects
+    for each operation to avoid blocking other potential connections.
+    """
 
     def __init__(self, host: str, port: int) -> None:
         """Initialize the Modbus client."""
         self.host = host
         self.port = port
-        self.client = ModbusTcpClient(host=host, port=port, timeout=5)
+        self._lock = threading.Lock()
+        self._client: ModbusTcpClient | None = None
+
+    @contextmanager
+    def _connection(self) -> Generator[ModbusTcpClient, None, None]:
+        """Context manager for thread-safe Modbus connection.
+
+        Acquires lock, connects, yields client, then disconnects and releases lock.
+        This ensures only one connection exists at any time.
+        """
+        with self._lock:
+            client = ModbusTcpClient(host=self.host, port=self.port, timeout=5)
+            try:
+                if not client.connect():
+                    raise ConnectionError(f"Failed to connect to {self.host}:{self.port}")
+                yield client
+            finally:
+                client.close()
 
     def connect(self) -> bool:
-        """Connect to the Modbus device."""
-        return self.client.connect()
+        """Test connection to the Modbus device."""
+        try:
+            with self._connection() as client:
+                # Just test the connection
+                return client.connected
+        except Exception:
+            return False
 
     def close(self) -> None:
-        """Close the Modbus connection."""
-        self.client.close()
+        """Close any existing connection (no-op with connect-per-request)."""
+        # No persistent connection to close
+        pass
 
     def read_input_register(self, address: int) -> int | None:
         """Read a single input register."""
         try:
-            result = self.client.read_input_registers(address=address, count=1)
-            if result.isError():
-                _LOGGER.error("Error reading input register %s: %s", address, result)
-                return None
-            return result.registers[0]
+            with self._connection() as client:
+                result = client.read_input_registers(address=address, count=1)
+                if result.isError():
+                    _LOGGER.error("Error reading input register %s: %s", address, result)
+                    return None
+                return result.registers[0]
         except Exception as err:
             _LOGGER.error("Exception reading input register %s: %s", address, err)
             return None
@@ -82,11 +113,12 @@ class AmperfieldModbusClient:
     def read_holding_register(self, address: int) -> int | None:
         """Read a single holding register."""
         try:
-            result = self.client.read_holding_registers(address=address, count=1)
-            if result.isError():
-                _LOGGER.error("Error reading holding register %s: %s", address, result)
-                return None
-            return result.registers[0]
+            with self._connection() as client:
+                result = client.read_holding_registers(address=address, count=1)
+                if result.isError():
+                    _LOGGER.error("Error reading holding register %s: %s", address, result)
+                    return None
+                return result.registers[0]
         except Exception as err:
             _LOGGER.error("Exception reading holding register %s: %s", address, err)
             return None
@@ -94,11 +126,12 @@ class AmperfieldModbusClient:
     def write_holding_register(self, address: int, value: int) -> bool:
         """Write a single holding register."""
         try:
-            result = self.client.write_register(address=address, value=value)
-            if result.isError():
-                _LOGGER.error("Error writing holding register %s: %s", address, result)
-                return False
-            return True
+            with self._connection() as client:
+                result = client.write_register(address=address, value=value)
+                if result.isError():
+                    _LOGGER.error("Error writing holding register %s: %s", address, result)
+                    return False
+                return True
         except Exception as err:
             _LOGGER.error("Exception writing holding register %s: %s", address, err)
             return False
@@ -106,23 +139,24 @@ class AmperfieldModbusClient:
     def read_string_registers(self, start_address: int, count: int) -> str | None:
         """Read multiple registers and convert to ASCII string."""
         try:
-            result = self.client.read_input_registers(address=start_address, count=count)
-            if result.isError():
-                _LOGGER.error("Error reading string registers from %s: %s", start_address, result)
-                return None
+            with self._connection() as client:
+                result = client.read_input_registers(address=start_address, count=count)
+                if result.isError():
+                    _LOGGER.error("Error reading string registers from %s: %s", start_address, result)
+                    return None
 
-            # Each register contains 2 ASCII characters
-            text = ""
-            for register in result.registers:
-                high_byte = (register >> 8) & 0xFF
-                low_byte = register & 0xFF
-                if high_byte == 0:
-                    break
-                text += chr(high_byte)
-                if low_byte == 0:
-                    break
-                text += chr(low_byte)
-            return text
+                # Each register contains 2 ASCII characters
+                text = ""
+                for register in result.registers:
+                    high_byte = (register >> 8) & 0xFF
+                    low_byte = register & 0xFF
+                    if high_byte == 0:
+                        break
+                    text += chr(high_byte)
+                    if low_byte == 0:
+                        break
+                    text += chr(low_byte)
+                return text
         except Exception as err:
             _LOGGER.error("Exception reading string registers from %s: %s", start_address, err)
             return None
@@ -130,14 +164,15 @@ class AmperfieldModbusClient:
     def read_32bit_value(self, high_address: int) -> int | None:
         """Read a 32-bit value from two consecutive registers."""
         try:
-            result = self.client.read_input_registers(address=high_address, count=2)
-            if result.isError():
-                _LOGGER.error("Error reading 32-bit value from %s: %s", high_address, result)
-                return None
+            with self._connection() as client:
+                result = client.read_input_registers(address=high_address, count=2)
+                if result.isError():
+                    _LOGGER.error("Error reading 32-bit value from %s: %s", high_address, result)
+                    return None
 
-            high_byte = result.registers[0]
-            low_byte = result.registers[1]
-            return (high_byte << 16) + low_byte
+                high_byte = result.registers[0]
+                low_byte = result.registers[1]
+                return (high_byte << 16) + low_byte
         except Exception as err:
             _LOGGER.error("Exception reading 32-bit value from %s: %s", high_address, err)
             return None
@@ -352,3 +387,147 @@ class AmperfieldModbusClient:
     def get_disconnect_simulation_status(self) -> int | None:
         """Get disconnect simulation status."""
         return self.read_input_register(REG_DISCONNECT_SIMULATION_STATUS)
+
+    def fetch_all_data(self) -> dict[str, Any]:
+        """Fetch all data in a single connection for efficiency.
+
+        This method reads all commonly needed registers in one connection session,
+        which is much more efficient than individual calls when the wallbox
+        only supports one connection at a time.
+        """
+        data: dict[str, Any] = {}
+
+        try:
+            with self._connection() as client:
+                # Helper functions that use the already-open connection
+                def read_input(address: int) -> int | None:
+                    result = client.read_input_registers(address=address, count=1)
+                    if result.isError():
+                        return None
+                    return result.registers[0]
+
+                def read_holding(address: int) -> int | None:
+                    result = client.read_holding_registers(address=address, count=1)
+                    if result.isError():
+                        return None
+                    return result.registers[0]
+
+                def read_32bit(high_address: int) -> int | None:
+                    result = client.read_input_registers(address=high_address, count=2)
+                    if result.isError():
+                        return None
+                    return (result.registers[0] << 16) + result.registers[1]
+
+                def read_string(start_address: int, count: int) -> str | None:
+                    result = client.read_input_registers(address=start_address, count=count)
+                    if result.isError():
+                        return None
+                    text = ""
+                    for register in result.registers:
+                        high_byte = (register >> 8) & 0xFF
+                        low_byte = register & 0xFF
+                        if high_byte == 0:
+                            break
+                        text += chr(high_byte)
+                        if low_byte == 0:
+                            break
+                        text += chr(low_byte)
+                    return text
+
+                # Read all input registers
+                data["charging_state"] = read_input(REG_CHARGING_STATE)
+
+                current_l1 = read_input(REG_CURRENT_L1)
+                data["current_l1"] = current_l1 / 10.0 if current_l1 is not None else None
+
+                current_l2 = read_input(REG_CURRENT_L2)
+                data["current_l2"] = current_l2 / 10.0 if current_l2 is not None else None
+
+                current_l3 = read_input(REG_CURRENT_L3)
+                data["current_l3"] = current_l3 / 10.0 if current_l3 is not None else None
+
+                temp = read_input(REG_TEMPERATURE)
+                if temp is not None:
+                    if temp > 32767:
+                        temp = temp - 65536
+                    data["temperature"] = temp / 10.0
+                else:
+                    data["temperature"] = None
+
+                data["voltage_l1"] = read_input(REG_VOLTAGE_L1)
+                data["voltage_l2"] = read_input(REG_VOLTAGE_L2)
+                data["voltage_l3"] = read_input(REG_VOLTAGE_L3)
+                data["extern_lock"] = read_input(REG_EXTERN_LOCK)
+                data["power"] = read_input(REG_POWER)
+                data["power_l1"] = read_input(REG_POWER_L1)
+                data["power_l2"] = read_input(REG_POWER_L2)
+                data["power_l3"] = read_input(REG_POWER_L3)
+                data["hw_max_current"] = read_input(REG_HW_MAX_CURRENT)
+
+                # 32-bit energy values
+                data["energy_poweron"] = read_32bit(REG_ENERGY_POWERON_HIGH)
+                data["energy_installation"] = read_32bit(REG_ENERGY_INSTALL_HIGH)
+                data["energy_cycle"] = read_32bit(REG_ENERGY_CYCLE_HIGH)
+
+                # String registers
+                data["firmware_version"] = read_string(REG_FIRMWARE_VERSION_START, 41)
+                data["item_number"] = read_string(REG_ITEM_NUMBER_START, 18)
+
+                # Holding registers
+                data["remote_lock"] = read_holding(REG_REMOTE_LOCK)
+
+                max_current = read_holding(REG_MAX_CURRENT)
+                data["max_current"] = max_current / 10.0 if max_current is not None else None
+
+                # Try to read phase switch registers (solar/solar pro only)
+                phase_switch_state = read_input(REG_PHASE_SWITCH_STATE)
+                if phase_switch_state is not None:
+                    data["phase_switch_state"] = phase_switch_state
+                    data["phase_switch_control"] = read_holding(REG_PHASE_SWITCH_CONTROL)
+                    data["charging_strategy"] = read_holding(REG_CHARGING_STRATEGY)
+                    data["max_power_set"] = read_input(REG_MAX_POWER_SET)
+
+        except Exception as err:
+            _LOGGER.error("Exception fetching all data: %s", err)
+            raise
+
+        return data
+
+    def fetch_device_info(self) -> dict[str, Any]:
+        """Fetch device identification info in a single connection."""
+        data: dict[str, Any] = {}
+
+        try:
+            with self._connection() as client:
+                def read_string(start_address: int, count: int) -> str | None:
+                    result = client.read_input_registers(address=start_address, count=count)
+                    if result.isError():
+                        return None
+                    text = ""
+                    for register in result.registers:
+                        high_byte = (register >> 8) & 0xFF
+                        low_byte = register & 0xFF
+                        if high_byte == 0:
+                            break
+                        text += chr(high_byte)
+                        if low_byte == 0:
+                            break
+                        text += chr(low_byte)
+                    return text
+
+                def read_input(address: int) -> int | None:
+                    result = client.read_input_registers(address=address, count=1)
+                    if result.isError():
+                        return None
+                    return result.registers[0]
+
+                data["serial_number"] = read_string(REG_SERIAL_START, 18)
+                data["firmware_version"] = read_string(REG_FIRMWARE_VERSION_START, 41)
+                data["item_number"] = read_string(REG_ITEM_NUMBER_START, 18)
+                data["hw_max_current"] = read_input(REG_HW_MAX_CURRENT)
+
+        except Exception as err:
+            _LOGGER.error("Exception fetching device info: %s", err)
+            raise
+
+        return data

@@ -1,7 +1,6 @@
 """Sensor platform for Amperfield Wallbox Connect."""
 from __future__ import annotations
 
-from datetime import timedelta
 import logging
 from typing import Any
 
@@ -12,7 +11,6 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    CONF_SCAN_INTERVAL,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
@@ -22,22 +20,15 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-    UpdateFailed,
-)
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from . import AmperfieldDataUpdateCoordinator
 from .const import (
     CHARGING_STATES,
-    CONF_NAME_PREFIX,
-    DEFAULT_NAME_PREFIX,
-    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MODEL_MAPPING,
     PHASE_SWITCH_STATES,
 )
-from .modbus_client import AmperfieldModbusClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,35 +39,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Amperfield sensors from a config entry."""
-    client: AmperfieldModbusClient = hass.data[DOMAIN][config_entry.entry_id]
-
-    scan_interval = config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-    name_prefix = config_entry.data.get(CONF_NAME_PREFIX, DEFAULT_NAME_PREFIX)
-
-    coordinator = AmperfieldDataUpdateCoordinator(
-        hass,
-        client,
-        scan_interval,
-    )
-
-    await coordinator.async_config_entry_first_refresh()
-
-    # Get device info
-    serial_number = await hass.async_add_executor_job(client.get_serial_number)
-    firmware_version = await hass.async_add_executor_job(client.get_firmware_version)
-    item_number = await hass.async_add_executor_job(client.get_item_number)
-
-    # Get friendly model name from mapping
-    model_name = MODEL_MAPPING.get(item_number, f"Unknown ({item_number})") if item_number else "Unknown"
-
-    device_info = DeviceInfo(
-        identifiers={(DOMAIN, serial_number or config_entry.entry_id)},
-        name=f"Wallbox {serial_number}" if serial_number else "Amperfield Wallbox",
-        manufacturer="Amperfield",
-        model=model_name,
-        sw_version=firmware_version,
-        serial_number=serial_number,
-    )
+    data = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator: AmperfieldDataUpdateCoordinator = data["coordinator"]
+    device_info: DeviceInfo = data["device_info"]
+    name_prefix: str = data["name_prefix"]
 
     entities: list[SensorEntity] = [
         AmperfieldChargingStateSensor(coordinator, device_info, name_prefix),
@@ -104,69 +70,6 @@ async def async_setup_entry(
         entities.append(AmperfieldMaxPowerSetSensor(coordinator, device_info, name_prefix))
 
     async_add_entities(entities)
-
-
-class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
-    """Class to manage fetching Amperfield data."""
-
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        client: AmperfieldModbusClient,
-        scan_interval: int,
-    ) -> None:
-        """Initialize."""
-        self.client = client
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=DOMAIN,
-            update_interval=timedelta(seconds=scan_interval),
-        )
-
-    async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from Modbus."""
-        try:
-            data = await self.hass.async_add_executor_job(self._fetch_data)
-            return data
-        except Exception as err:
-            raise UpdateFailed(f"Error communicating with device: {err}") from err
-
-    def _fetch_data(self) -> dict[str, Any]:
-        """Fetch all data from the wallbox."""
-        data = {
-            "charging_state": self.client.get_charging_state(),
-            "current_l1": self.client.get_current_l1(),
-            "current_l2": self.client.get_current_l2(),
-            "current_l3": self.client.get_current_l3(),
-            "voltage_l1": self.client.get_voltage_l1(),
-            "voltage_l2": self.client.get_voltage_l2(),
-            "voltage_l3": self.client.get_voltage_l3(),
-            "power": self.client.get_power(),
-            "power_l1": self.client.get_power_l1(),
-            "power_l2": self.client.get_power_l2(),
-            "power_l3": self.client.get_power_l3(),
-            "temperature": self.client.get_temperature(),
-            "energy_poweron": self.client.get_energy_since_poweron(),
-            "energy_installation": self.client.get_energy_since_installation(),
-            "energy_cycle": self.client.get_energy_charge_cycle(),
-            "extern_lock": self.client.get_extern_lock_state(),
-            "remote_lock": self.client.get_remote_lock(),
-            "max_current": self.client.get_max_current(),
-            "hw_max_current": self.client.get_hardware_max_current(),
-            "firmware_version": self.client.get_firmware_version(),
-            "item_number": self.client.get_item_number(),
-        }
-
-        # Try to read phase switch state (only available on solar/solar pro)
-        phase_switch_state = self.client.get_phase_switch_state()
-        if phase_switch_state is not None:
-            data["phase_switch_state"] = phase_switch_state
-            data["phase_switch_control"] = self.client.get_phase_switch_control()
-            data["charging_strategy"] = self.client.get_charging_strategy()
-            data["max_power_set"] = self.client.get_max_power_set()
-
-        return data
 
 
 class AmperfieldSensorBase(CoordinatorEntity, SensorEntity):
