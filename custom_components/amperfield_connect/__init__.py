@@ -56,10 +56,13 @@ class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
         Uses batch fetch to retrieve all data in a single connection,
         since the wallbox only supports one connection at a time.
         """
+        _LOGGER.debug("Coordinator requesting data update")
         try:
             data = await self.hass.async_add_executor_job(self.client.fetch_all_data)
+            _LOGGER.debug("Coordinator received data update successfully")
             return data
         except Exception as err:
+            _LOGGER.warning("Coordinator update failed: %s", err)
             raise UpdateFailed(f"Error communicating with device: {err}") from err
 
 
@@ -68,10 +71,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     host = entry.data[CONF_HOST]
     port = entry.data[CONF_PORT]
 
+    _LOGGER.debug("Setting up Amperfield Wallbox at %s:%s", host, port)
     client = AmperfieldModbusClient(host, port)
 
     # Test connection and fetch device info in a single connection
     try:
+        _LOGGER.debug("Fetching device info from wallbox")
         device_data = await hass.async_add_executor_job(client.fetch_device_info)
     except Exception as err:
         _LOGGER.error("Failed to connect to Amperfield Wallbox at %s:%s: %s", host, port, err)
@@ -86,6 +91,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Get friendly model name from mapping
         model_name = MODEL_MAPPING.get(item_number, f"Unknown ({item_number})") if item_number else "Unknown"
 
+        _LOGGER.info(
+            "Found Amperfield Wallbox: serial=%s, model=%s, firmware=%s, max_current=%dA",
+            serial_number,
+            model_name,
+            firmware_version,
+            hw_max_current,
+        )
+
         device_info = DeviceInfo(
             identifiers={(DOMAIN, serial_number or entry.entry_id)},
             name=f"Wallbox {serial_number}" if serial_number else "Amperfield Wallbox",
@@ -97,6 +110,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Create coordinator
         scan_interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        _LOGGER.debug("Creating data coordinator with %ds scan interval", scan_interval)
         coordinator = AmperfieldDataUpdateCoordinator(hass, client, scan_interval)
         await coordinator.async_config_entry_first_refresh()
 
@@ -114,16 +128,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "hw_max_current": hw_max_current,
     }
 
+    _LOGGER.debug("Setting up platforms: %s", PLATFORMS)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    _LOGGER.info("Amperfield Wallbox integration setup complete for %s", serial_number or host)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    _LOGGER.debug("Unloading Amperfield Wallbox integration")
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         data = hass.data[DOMAIN].pop(entry.entry_id)
         client: AmperfieldModbusClient = data["client"]
         await hass.async_add_executor_job(client.close)
+        _LOGGER.info("Amperfield Wallbox integration unloaded")
 
     return unload_ok

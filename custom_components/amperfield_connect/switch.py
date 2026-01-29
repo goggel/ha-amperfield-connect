@@ -31,6 +31,7 @@ async def async_setup_entry(
         AmperfieldRemoteLockSwitch(client, device_info, name_prefix),
     ]
 
+    _LOGGER.debug("Setting up %d switch entities", len(entities))
     async_add_entities(entities)
 
 
@@ -84,12 +85,18 @@ class AmperfieldRemoteLockSwitch(AmperfieldSwitchBase):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on (lock charging)."""
-        await self.hass.async_add_executor_job(self.client.set_remote_lock, True)
+        _LOGGER.debug("Locking charging via remote lock")
+        success = await self.hass.async_add_executor_job(self.client.set_remote_lock, True)
+        if not success:
+            _LOGGER.error("Failed to lock charging")
         # Request update
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off (unlock charging)."""
-        await self.hass.async_add_executor_job(self.client.set_remote_lock, False)
+        _LOGGER.debug("Unlocking charging via remote lock")
+        success = await self.hass.async_add_executor_job(self.client.set_remote_lock, False)
+        if not success:
+            _LOGGER.error("Failed to unlock charging")
         # Request update
         self.async_write_ha_state()

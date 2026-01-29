@@ -39,10 +39,14 @@ async def async_setup_entry(
         # Only add charging strategy select
         # Phase switching is now controlled via Maximum Power Target (register 500)
         # instead of manual phase switch control (register 501)
+        _LOGGER.debug("Solar/Solar PRO model detected, adding charging strategy select")
         entities.append(AmperfieldChargingStrategySelect(client, device_info, name_prefix))
 
     if entities:
+        _LOGGER.debug("Setting up %d select entities", len(entities))
         async_add_entities(entities)
+    else:
+        _LOGGER.debug("No select entities to set up (non-solar model)")
 
 
 class AmperfieldSelectBase(SelectEntity):
@@ -89,6 +93,7 @@ class AmperfieldChargingStrategySelect(AmperfieldSelectBase):
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
+        _LOGGER.debug("Changing charging strategy to '%s'", option)
         # Reverse lookup
         value = None
         for key, val in CHARGING_STRATEGIES.items():
@@ -100,6 +105,8 @@ class AmperfieldChargingStrategySelect(AmperfieldSelectBase):
             _LOGGER.error("Invalid charging strategy option: %s", option)
             return
 
-        await self.hass.async_add_executor_job(self.client.set_charging_strategy, value)
+        success = await self.hass.async_add_executor_job(self.client.set_charging_strategy, value)
+        if not success:
+            _LOGGER.error("Failed to set charging strategy to '%s'", option)
         # Request update
         self.async_write_ha_state()

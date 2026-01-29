@@ -38,8 +38,10 @@ async def async_setup_entry(
 
     # Add max power target control if phase switching is available (solar/solar pro)
     if coordinator.data.get("phase_switch_state") is not None:
+        _LOGGER.debug("Solar/Solar PRO model detected, adding max power target control")
         entities.append(AmperfieldMaxPowerNumber(client, device_info, name_prefix, hw_max_current))
 
+    _LOGGER.debug("Setting up %d number entities", len(entities))
     async_add_entities(entities)
 
 
@@ -90,7 +92,10 @@ class AmperfieldMaxCurrentNumber(AmperfieldNumberBase):
         """Set new value."""
         # According to documentation:
         # 60-160 = valid range (6.0A - 16.0A+ in 0.1A steps)
-        await self.hass.async_add_executor_job(self.client.set_max_current, value)
+        _LOGGER.debug("Setting max current to %.1f A", value)
+        success = await self.hass.async_add_executor_job(self.client.set_max_current, value)
+        if not success:
+            _LOGGER.error("Failed to set max current to %.1f A", value)
 
 
 class AmperfieldFailsafeCurrentNumber(AmperfieldNumberBase):
@@ -121,7 +126,10 @@ class AmperfieldFailsafeCurrentNumber(AmperfieldNumberBase):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value."""
-        await self.hass.async_add_executor_job(self.client.set_failsafe_current, value)
+        _LOGGER.debug("Setting failsafe current to %.1f A", value)
+        success = await self.hass.async_add_executor_job(self.client.set_failsafe_current, value)
+        if not success:
+            _LOGGER.error("Failed to set failsafe current to %.1f A", value)
 
 
 class AmperfieldMaxPowerNumber(AmperfieldNumberBase):
@@ -155,5 +163,9 @@ class AmperfieldMaxPowerNumber(AmperfieldNumberBase):
         watts = int(value)
         # Minimum charging power is 1400W (6A * 230V), round up if between 1-1399
         if 1 <= watts < 1400:
+            _LOGGER.debug("Rounding up max power target from %d W to 1400 W (minimum)", int(value))
             watts = 1400
-        await self.hass.async_add_executor_job(self.client.set_max_power_target, watts)
+        _LOGGER.debug("Setting max power target to %d W", watts)
+        success = await self.hass.async_add_executor_job(self.client.set_max_power_target, watts)
+        if not success:
+            _LOGGER.error("Failed to set max power target to %d W", watts)

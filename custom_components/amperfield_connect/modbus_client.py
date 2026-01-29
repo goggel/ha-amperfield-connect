@@ -66,6 +66,7 @@ class AmperfieldModbusClient:
         self.port = port
         self._lock = threading.Lock()
         self._client: ModbusTcpClient | None = None
+        _LOGGER.debug("Initialized Modbus client for %s:%s", host, port)
 
     @contextmanager
     def _connection(self) -> Generator[ModbusTcpClient, None, None]:
@@ -75,21 +76,29 @@ class AmperfieldModbusClient:
         This ensures only one connection exists at any time.
         """
         with self._lock:
+            _LOGGER.debug("Opening Modbus connection to %s:%s", self.host, self.port)
             client = ModbusTcpClient(host=self.host, port=self.port, timeout=5)
             try:
                 if not client.connect():
+                    _LOGGER.warning("Failed to connect to %s:%s", self.host, self.port)
                     raise ConnectionError(f"Failed to connect to {self.host}:{self.port}")
+                _LOGGER.debug("Connected to %s:%s", self.host, self.port)
                 yield client
             finally:
                 client.close()
+                _LOGGER.debug("Closed connection to %s:%s", self.host, self.port)
 
     def connect(self) -> bool:
         """Test connection to the Modbus device."""
+        _LOGGER.debug("Testing connection to %s:%s", self.host, self.port)
         try:
             with self._connection() as client:
-                # Just test the connection
-                return client.connected
-        except Exception:
+                connected = client.connected
+                if connected:
+                    _LOGGER.info("Successfully connected to wallbox at %s:%s", self.host, self.port)
+                return connected
+        except Exception as err:
+            _LOGGER.debug("Connection test failed: %s", err)
             return False
 
     def close(self) -> None:
@@ -99,45 +108,54 @@ class AmperfieldModbusClient:
 
     def read_input_register(self, address: int) -> int | None:
         """Read a single input register."""
+        _LOGGER.debug("Reading input register %s", address)
         try:
             with self._connection() as client:
                 result = client.read_input_registers(address=address, count=1)
                 if result.isError():
                     _LOGGER.error("Error reading input register %s: %s", address, result)
                     return None
-                return result.registers[0]
+                value = result.registers[0]
+                _LOGGER.debug("Read input register %s = %s", address, value)
+                return value
         except Exception as err:
             _LOGGER.error("Exception reading input register %s: %s", address, err)
             return None
 
     def read_holding_register(self, address: int) -> int | None:
         """Read a single holding register."""
+        _LOGGER.debug("Reading holding register %s", address)
         try:
             with self._connection() as client:
                 result = client.read_holding_registers(address=address, count=1)
                 if result.isError():
                     _LOGGER.error("Error reading holding register %s: %s", address, result)
                     return None
-                return result.registers[0]
+                value = result.registers[0]
+                _LOGGER.debug("Read holding register %s = %s", address, value)
+                return value
         except Exception as err:
             _LOGGER.error("Exception reading holding register %s: %s", address, err)
             return None
 
     def write_holding_register(self, address: int, value: int) -> bool:
         """Write a single holding register."""
+        _LOGGER.debug("Writing holding register %s = %s", address, value)
         try:
             with self._connection() as client:
                 result = client.write_register(address=address, value=value)
                 if result.isError():
-                    _LOGGER.error("Error writing holding register %s: %s", address, result)
+                    _LOGGER.error("Error writing holding register %s = %s: %s", address, value, result)
                     return False
+                _LOGGER.debug("Successfully wrote holding register %s = %s", address, value)
                 return True
         except Exception as err:
-            _LOGGER.error("Exception writing holding register %s: %s", address, err)
+            _LOGGER.error("Exception writing holding register %s = %s: %s", address, value, err)
             return False
 
     def read_string_registers(self, start_address: int, count: int) -> str | None:
         """Read multiple registers and convert to ASCII string."""
+        _LOGGER.debug("Reading string registers %s-%s (count=%s)", start_address, start_address + count - 1, count)
         try:
             with self._connection() as client:
                 result = client.read_input_registers(address=start_address, count=count)
@@ -156,6 +174,7 @@ class AmperfieldModbusClient:
                     if low_byte == 0:
                         break
                     text += chr(low_byte)
+                _LOGGER.debug("Read string from register %s = '%s'", start_address, text)
                 return text
         except Exception as err:
             _LOGGER.error("Exception reading string registers from %s: %s", start_address, err)
@@ -163,6 +182,7 @@ class AmperfieldModbusClient:
 
     def read_32bit_value(self, high_address: int) -> int | None:
         """Read a 32-bit value from two consecutive registers."""
+        _LOGGER.debug("Reading 32-bit value from registers %s-%s", high_address, high_address + 1)
         try:
             with self._connection() as client:
                 result = client.read_input_registers(address=high_address, count=2)
@@ -172,7 +192,9 @@ class AmperfieldModbusClient:
 
                 high_byte = result.registers[0]
                 low_byte = result.registers[1]
-                return (high_byte << 16) + low_byte
+                value = (high_byte << 16) + low_byte
+                _LOGGER.debug("Read 32-bit value from register %s = %s", high_address, value)
+                return value
         except Exception as err:
             _LOGGER.error("Exception reading 32-bit value from %s: %s", high_address, err)
             return None
@@ -298,6 +320,7 @@ class AmperfieldModbusClient:
 
     def set_remote_lock(self, locked: bool) -> bool:
         """Set remote lock state."""
+        _LOGGER.info("Setting remote lock to %s", "locked" if locked else "unlocked")
         return self.write_holding_register(REG_REMOTE_LOCK, 0 if locked else 1)
 
     def get_max_current(self) -> float | None:
@@ -307,6 +330,7 @@ class AmperfieldModbusClient:
 
     def set_max_current(self, amperes: float) -> bool:
         """Set maximum current command in Amperes (0.1A steps)."""
+        _LOGGER.info("Setting max current to %.1f A", amperes)
         value = int(amperes * 10)
         return self.write_holding_register(REG_MAX_CURRENT, value)
 
@@ -317,6 +341,7 @@ class AmperfieldModbusClient:
 
     def set_failsafe_current(self, amperes: float) -> bool:
         """Set failsafe current in Amperes (0.1A steps)."""
+        _LOGGER.info("Setting failsafe current to %.1f A", amperes)
         value = int(amperes * 10)
         return self.write_holding_register(REG_FAILSAFE_CURRENT, value)
 
@@ -327,6 +352,7 @@ class AmperfieldModbusClient:
 
     def set_max_power_target(self, watts: int) -> bool:
         """Set maximum power target in Watts."""
+        _LOGGER.info("Setting max power target to %d W", watts)
         return self.write_holding_register(REG_MAX_POWER_TARGET, watts)
 
     def get_phase_switch_control(self) -> int | None:
@@ -346,6 +372,8 @@ class AmperfieldModbusClient:
 
     def set_charging_strategy(self, strategy: int) -> bool:
         """Set charging management strategy (0=manual, 1=solar)."""
+        strategy_name = "manual" if strategy == 0 else "solar" if strategy == 1 else f"unknown({strategy})"
+        _LOGGER.info("Setting charging strategy to %s (%d)", strategy_name, strategy)
         return self.write_holding_register(REG_CHARGING_STRATEGY, strategy)
 
     def get_phase_switch_duration(self) -> int | None:
@@ -395,6 +423,7 @@ class AmperfieldModbusClient:
         which is much more efficient than individual calls when the wallbox
         only supports one connection at a time.
         """
+        _LOGGER.debug("Starting batch fetch of all sensor data")
         data: dict[str, Any] = {}
 
         try:
@@ -491,10 +520,19 @@ class AmperfieldModbusClient:
             _LOGGER.error("Exception fetching all data: %s", err)
             raise
 
+        _LOGGER.debug(
+            "Batch fetch complete: charging_state=%s, power=%sW, current=%.1f/%.1f/%.1f A",
+            data.get("charging_state"),
+            data.get("power"),
+            data.get("current_l1") or 0,
+            data.get("current_l2") or 0,
+            data.get("current_l3") or 0,
+        )
         return data
 
     def fetch_device_info(self) -> dict[str, Any]:
         """Fetch device identification info in a single connection."""
+        _LOGGER.debug("Fetching device identification info")
         data: dict[str, Any] = {}
 
         try:
@@ -530,4 +568,10 @@ class AmperfieldModbusClient:
             _LOGGER.error("Exception fetching device info: %s", err)
             raise
 
+        _LOGGER.debug(
+            "Device info: serial=%s, firmware=%s, item=%s",
+            data.get("serial_number"),
+            data.get("firmware_version"),
+            data.get("item_number"),
+        )
         return data

@@ -193,6 +193,78 @@ result = client.read_input_registers(address=4, count=1)  # Modbus version
 print(result.registers[0])
 ```
 
+## Debugging
+
+The integration includes comprehensive logging to help diagnose issues with wallbox communication.
+
+### Enabling Debug Logging
+
+Add the following to your `configuration.yaml`:
+
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.amperfield_connect: debug
+```
+
+For even more detailed Modbus-level logging, you can also enable pymodbus debug:
+
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.amperfield_connect: debug
+    pymodbus: debug
+```
+
+After changing the configuration, restart Home Assistant.
+
+### Log Levels
+
+The integration uses the following log levels:
+
+| Level | What's Logged |
+|-------|---------------|
+| **DEBUG** | Connection lifecycle (open/close), individual register reads/writes with addresses and values, batch data fetches, coordinator updates, entity setup |
+| **INFO** | Successful connection, device discovery (serial, model, firmware), integration setup/teardown, write operations (max current, lock, power target, strategy) |
+| **WARNING** | Connection failures, coordinator update failures |
+| **ERROR** | Modbus communication errors, failed write operations, invalid parameters |
+
+### Example Debug Output
+
+When debug logging is enabled, you'll see output like:
+
+```
+DEBUG custom_components.amperfield_connect.modbus_client - Opening Modbus connection to 192.168.1.100:502
+DEBUG custom_components.amperfield_connect.modbus_client - Connected to 192.168.1.100:502
+DEBUG custom_components.amperfield_connect.modbus_client - Starting batch fetch of all sensor data
+DEBUG custom_components.amperfield_connect.modbus_client - Batch fetch complete: charging_state=7, power=7400W, current=10.8/10.7/10.8 A
+DEBUG custom_components.amperfield_connect.modbus_client - Closed connection to 192.168.1.100:502
+INFO custom_components.amperfield_connect.modbus_client - Setting max current to 12.0 A
+DEBUG custom_components.amperfield_connect.modbus_client - Writing holding register 261 = 120
+DEBUG custom_components.amperfield_connect.modbus_client - Successfully wrote holding register 261 = 120
+```
+
+### Diagnosing Connection Issues
+
+1. **Enable debug logging** as shown above
+2. **Check the logs** for connection open/close patterns
+3. **Look for error messages** indicating what failed
+4. **Verify register values** match expected behavior
+
+Common patterns in logs:
+- `Failed to connect` - Network issue or wallbox not reachable
+- `Error reading input register` - Communication succeeded but register read failed
+- `Exception fetching all data` - General communication problem during batch fetch
+
+### Live Log Viewing
+
+In Home Assistant, you can view logs in real-time:
+1. Go to **Settings → System → Logs**
+2. Filter by `amperfield_connect` to see only this integration's logs
+3. Use the **Download full log** button for detailed analysis
+
 ## Common Issues
 
 ### Two Devices Showing

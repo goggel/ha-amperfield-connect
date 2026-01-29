@@ -38,26 +38,34 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
+    _LOGGER.debug("Validating connection to %s:%s", data[CONF_HOST], data[CONF_PORT])
     client = AmperfieldModbusClient(data[CONF_HOST], data[CONF_PORT])
 
     try:
         if not await hass.async_add_executor_job(client.connect):
+            _LOGGER.debug("Connection test failed for %s:%s", data[CONF_HOST], data[CONF_PORT])
             raise CannotConnect
 
         # Try to read the Modbus version to verify communication
+        _LOGGER.debug("Reading Modbus version to verify communication")
         version = await hass.async_add_executor_job(client.get_modbus_version)
         if version is None:
+            _LOGGER.debug("Failed to read Modbus version")
             raise CannotConnect
+        _LOGGER.debug("Modbus version: %s", version)
 
         # Get serial number for unique ID
         serial_number = await hass.async_add_executor_job(client.get_serial_number)
+        _LOGGER.debug("Serial number: %s", serial_number)
 
         await hass.async_add_executor_job(client.close)
 
     except Exception as err:
+        _LOGGER.debug("Validation failed: %s", err)
         await hass.async_add_executor_job(client.close)
         raise CannotConnect from err
 
+    _LOGGER.info("Successfully validated connection to wallbox %s", serial_number or data[CONF_HOST])
     # Return info that you want to store in the config entry.
     return {
         "title": f"Amperfield Wallbox {serial_number or data[CONF_HOST]}",
@@ -74,6 +82,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle reconfiguration of an existing entry."""
+        _LOGGER.debug("Starting reconfigure flow")
         reconfigure_entry = self._get_reconfigure_entry()
 
         if user_input is None:
@@ -137,6 +146,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step."""
+        _LOGGER.debug("Starting user config flow")
         if user_input is None:
             return self.async_show_form(
                 step_id="user", data_schema=STEP_USER_DATA_SCHEMA
