@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import AmperfieldDataUpdateCoordinator
 from .const import (
@@ -36,11 +37,8 @@ async def async_setup_entry(
 
     # Check if phase switching is available (solar/solar pro models only)
     if coordinator.data.get("phase_switch_state") is not None:
-        # Only add charging strategy select
-        # Phase switching is now controlled via Maximum Power Target (register 500)
-        # instead of manual phase switch control (register 501)
         _LOGGER.debug("Solar/Solar PRO model detected, adding charging strategy select")
-        entities.append(AmperfieldChargingStrategySelect(client, device_info, name_prefix))
+        entities.append(AmperfieldChargingStrategySelect(coordinator, client, device_info, name_prefix))
 
     if entities:
         _LOGGER.debug("Setting up %d select entities", len(entities))
@@ -49,44 +47,31 @@ async def async_setup_entry(
         _LOGGER.debug("No select entities to set up (non-solar model)")
 
 
-class AmperfieldSelectBase(SelectEntity):
-    """Base class for Amperfield select entities."""
-
-    _attr_has_entity_name = True
-
-    def __init__(
-        self,
-        client: AmperfieldModbusClient,
-        device_info: DeviceInfo,
-        name_prefix: str,
-    ) -> None:
-        """Initialize the select entity."""
-        self.client = client
-        self._attr_device_info = device_info
-        self._name_prefix = name_prefix
-
-
-class AmperfieldChargingStrategySelect(AmperfieldSelectBase):
+class AmperfieldChargingStrategySelect(CoordinatorEntity, SelectEntity):
     """Select entity for charging strategy."""
 
+    _attr_has_entity_name = True
     _attr_translation_key = "charging_strategy"
     _attr_options = list(CHARGING_STRATEGIES.values())
     _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
+        coordinator: AmperfieldDataUpdateCoordinator,
         client: AmperfieldModbusClient,
         device_info: DeviceInfo,
         name_prefix: str,
     ) -> None:
         """Initialize the select entity."""
-        super().__init__(client, device_info, name_prefix)
+        super().__init__(coordinator)
+        self.client = client
+        self._attr_device_info = device_info
         self._attr_unique_id = f"{name_prefix.lower()}_charging_strategy"
 
     @property
     def current_option(self) -> str | None:
         """Return the current selected option."""
-        value = self.client.get_charging_strategy()
+        value = self.coordinator.data.get("charging_strategy")
         if value is None:
             return None
         return CHARGING_STRATEGIES.get(value)
@@ -106,7 +91,9 @@ class AmperfieldChargingStrategySelect(AmperfieldSelectBase):
             return
 
         success = await self.hass.async_add_executor_job(self.client.set_charging_strategy, value)
-        if not success:
+        if success:
+            self.coordinator.data["charging_strategy"] = value
+            self.async_write_ha_state()
+        else:
             _LOGGER.error("Failed to set charging strategy to '%s'", option)
-        # Request update
-        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()

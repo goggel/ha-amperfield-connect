@@ -110,6 +110,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         errors = {}
 
+        # Close existing persistent connection before testing the new one,
+        # since the wallbox only accepts one Modbus TCP connection at a time.
+        existing_data = self.hass.data.get(DOMAIN, {}).get(reconfigure_entry.entry_id)
+        if existing_data:
+            client: AmperfieldModbusClient = existing_data["client"]
+            _LOGGER.debug("Closing existing connection before reconfigure validation")
+            await self.hass.async_add_executor_job(client.close)
+
         try:
             await validate_input(self.hass, user_input)
         except CannotConnect:
