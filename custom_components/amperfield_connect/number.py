@@ -93,13 +93,14 @@ class AmperfieldMaxCurrentNumber(AmperfieldNumberBase):
         return self.coordinator.data.get("max_current")
 
     async def async_set_native_value(self, value: float) -> None:
-        """Set new value."""
+        """Set new value with optimistic update."""
         _LOGGER.debug("Setting max current to %.1f A", value)
-        success = await self.hass.async_add_executor_job(self.client.set_max_current, value)
-        if success:
-            self.coordinator.data["max_current"] = value
-            self.async_write_ha_state()
-        else:
+        # Optimistic update: reflect change immediately in UI
+        self.coordinator.data["max_current"] = value
+        self.async_write_ha_state()
+        # Write to device and schedule refresh
+        success = await self.client.set_max_current(value)
+        if not success:
             _LOGGER.error("Failed to set max current to %.1f A", value)
         await self.coordinator.async_request_refresh()
 
@@ -132,13 +133,12 @@ class AmperfieldFailsafeCurrentNumber(AmperfieldNumberBase):
         return self.coordinator.data.get("failsafe_current")
 
     async def async_set_native_value(self, value: float) -> None:
-        """Set new value."""
+        """Set new value with optimistic update."""
         _LOGGER.debug("Setting failsafe current to %.1f A", value)
-        success = await self.hass.async_add_executor_job(self.client.set_failsafe_current, value)
-        if success:
-            self.coordinator.data["failsafe_current"] = value
-            self.async_write_ha_state()
-        else:
+        self.coordinator.data["failsafe_current"] = value
+        self.async_write_ha_state()
+        success = await self.client.set_failsafe_current(value)
+        if not success:
             _LOGGER.error("Failed to set failsafe current to %.1f A", value)
         await self.coordinator.async_request_refresh()
 
@@ -148,7 +148,7 @@ class AmperfieldMaxPowerNumber(AmperfieldNumberBase):
 
     _attr_translation_key = "max_power_target"
     _attr_native_unit_of_measurement = UnitOfPower.WATT
-    _attr_native_min_value = 1400
+    _attr_native_min_value = 0
     _attr_native_step = 100
 
     def __init__(
@@ -171,13 +171,15 @@ class AmperfieldMaxPowerNumber(AmperfieldNumberBase):
         return self.coordinator.data.get("max_power_target")
 
     async def async_set_native_value(self, value: float) -> None:
-        """Set new value."""
+        """Set new value with optimistic update."""
         watts = int(value)
+        if 0 < watts < 1400:
+            watts = 1400
+            _LOGGER.debug("Rounding up max power target to minimum 1400 W")
         _LOGGER.debug("Setting max power target to %d W", watts)
-        success = await self.hass.async_add_executor_job(self.client.set_max_power_target, watts)
-        if success:
-            self.coordinator.data["max_power_target"] = watts
-            self.async_write_ha_state()
-        else:
+        self.coordinator.data["max_power_target"] = watts
+        self.async_write_ha_state()
+        success = await self.client.set_max_power_target(watts)
+        if not success:
             _LOGGER.error("Failed to set max power target to %d W", watts)
         await self.coordinator.async_request_refresh()

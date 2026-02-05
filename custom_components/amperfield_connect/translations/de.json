@@ -40,21 +40,23 @@
   "entity": {
     "binary_sensor": {
       "phase_switching_available": {"name": "Phasenumschaltung"},
-      "vehicle_connected": {"name": "Fahrzeug angeschlossen"}
+      "vehicle_connected": {"name": "Fahrzeug angeschlossen"},
+      "charging_allowed": {"name": "Laden erlaubt"},
+      "vehicle_requests_charging": {"name": "Fahrzeug fordert Laden an"}
     },
     "sensor": {
       "charging_state": {
         "name": "Ladezustand",
         "state": {
-          "no_vehicle_connected": "Kein Fahrzeug angeschlossen",
-          "vehicle_ready_to_connect": "Fahrzeug bereit zum Anschließen",
-          "vehicle_ready_to_charge": "Fahrzeug bereit zum Laden",
-          "waiting_for_release": "Warten auf Freigabe durch Wallbox",
-          "charging_paused": "Laden pausiert",
+          "no_vehicle_no_charging": "Kein Fahrzeug, Wallbox gesperrt",
+          "no_vehicle_wallbox_ready": "Kein Fahrzeug, Wallbox bereit",
+          "vehicle_plugged_no_charging": "Fahrzeug angeschlossen, Wallbox gesperrt",
+          "vehicle_plugged_wallbox_ready": "Fahrzeug angeschlossen, Wallbox bereit",
+          "charge_request_no_charging": "Ladeanforderung, Wallbox gesperrt",
           "charging": "Lädt",
           "derating": "Leistungsreduzierung",
           "error": "Fehler",
-          "not_ready": "Nicht bereit",
+          "wallbox_locked": "Wallbox gesperrt oder nicht bereit",
           "fault": "Störung"
         }
       },

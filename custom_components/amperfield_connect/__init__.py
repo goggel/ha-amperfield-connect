@@ -1,6 +1,7 @@
 """The Amperfield Wallbox Connect integration."""
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 import logging
 from typing import Any
@@ -58,7 +59,7 @@ class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
         """
         _LOGGER.debug("Coordinator requesting data update")
         try:
-            data = await self.hass.async_add_executor_job(self.client.fetch_all_data)
+            data = await self.client.fetch_all_data()
             _LOGGER.debug("Coordinator received data update successfully")
             return data
         except Exception as err:
@@ -77,7 +78,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Test connection and fetch device info in a single connection
     try:
         _LOGGER.debug("Fetching device info from wallbox")
-        device_data = await hass.async_add_executor_job(client.fetch_device_info)
+        device_data = await client.fetch_device_info()
     except Exception as err:
         _LOGGER.error("Failed to connect to Amperfield Wallbox at %s:%s: %s", host, port, err)
         raise ConfigEntryNotReady(f"Cannot connect to {host}:{port}") from err
@@ -141,7 +142,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         data = hass.data[DOMAIN].pop(entry.entry_id)
         client: AmperfieldModbusClient = data["client"]
-        await hass.async_add_executor_job(client.close)
+        await client.close()
+        # Wait for wallbox to release the TCP socket (only accepts one connection)
+        await asyncio.sleep(2)
         _LOGGER.info("Amperfield Wallbox integration unloaded")
 
     return unload_ok

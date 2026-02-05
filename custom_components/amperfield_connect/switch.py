@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import AmperfieldDataUpdateCoordinator
@@ -67,30 +68,35 @@ class AmperfieldRemoteLockSwitch(CoordinatorEntity, SwitchEntity):
     @property
     def is_on(self) -> bool | None:
         """Return true if the switch is on (charging locked)."""
+        return self._attr_is_on
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
         value = self.coordinator.data.get("remote_lock")
-        if value is None:
-            return None
-        # 0 = locked (on), 1 = unlocked (off)
-        return value == 0
+        if value is not None:
+            # 0 = locked (on), 1 = unlocked (off)
+            self._attr_is_on = value == 0
+        else:
+            _LOGGER.debug("remote_lock is None in coordinator data, keeping last known state")
+        self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the switch on (lock charging)."""
+        """Turn the switch on (lock charging) with optimistic update."""
         _LOGGER.debug("Locking charging via remote lock")
-        success = await self.hass.async_add_executor_job(self.client.set_remote_lock, True)
-        if success:
-            self.coordinator.data["remote_lock"] = 0
-            self.async_write_ha_state()
-        else:
+        self._attr_is_on = True
+        self.async_write_ha_state()
+        success = await self.client.set_remote_lock(True)
+        if not success:
             _LOGGER.error("Failed to lock charging")
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the switch off (unlock charging)."""
+        """Turn the switch off (unlock charging) with optimistic update."""
         _LOGGER.debug("Unlocking charging via remote lock")
-        success = await self.hass.async_add_executor_job(self.client.set_remote_lock, False)
-        if success:
-            self.coordinator.data["remote_lock"] = 1
-            self.async_write_ha_state()
-        else:
+        self._attr_is_on = False
+        self.async_write_ha_state()
+        success = await self.client.set_remote_lock(False)
+        if not success:
             _LOGGER.error("Failed to unlock charging")
         await self.coordinator.async_request_refresh()

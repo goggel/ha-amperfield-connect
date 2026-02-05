@@ -90,10 +90,9 @@ class AmperfieldChargingStrategySelect(CoordinatorEntity, SelectEntity):
             _LOGGER.error("Invalid charging strategy option: %s", option)
             return
 
-        success = await self.hass.async_add_executor_job(self.client.set_charging_strategy, value)
-        if success:
-            self.coordinator.data["charging_strategy"] = value
-            self.async_write_ha_state()
-        else:
+        self.coordinator.data["charging_strategy"] = value
+        self.async_write_ha_state()
+        success = await self.client.set_charging_strategy(value)
+        if not success:
             _LOGGER.error("Failed to set charging strategy to '%s'", option)
         await self.coordinator.async_request_refresh()

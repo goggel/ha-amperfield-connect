@@ -57,16 +57,17 @@ REG_CHARGING_STRATEGY_STATUS = 5002
 REG_DISCONNECT_SIMULATION_STATUS = 5003
 
 # Charging States (EN 61851-1 standard)
+# Format: car state + wallbox state
 CHARGING_STATES = {
-    2: "no_vehicle_connected",
-    3: "vehicle_ready_to_connect",
-    4: "vehicle_ready_to_charge",
-    5: "waiting_for_release",
-    6: "charging_paused",
-    7: "charging",
+    2: "no_vehicle_no_charging",         # A1: No vehicle plugged, wallbox doesn't allow
+    3: "no_vehicle_wallbox_ready",       # A2: No vehicle plugged, wallbox allows
+    4: "vehicle_plugged_no_charging",    # B1: Vehicle plugged, no charge request, wallbox doesn't allow
+    5: "vehicle_plugged_wallbox_ready",  # B2: Vehicle plugged, no charge request, wallbox allows
+    6: "charge_request_no_charging",     # C1: Vehicle plugged, charge request, wallbox doesn't allow
+    7: "charging",                       # C2: Vehicle plugged, charge request, wallbox allows
     8: "derating",
     9: "error",
-    10: "not_ready",
+    10: "wallbox_locked",
     11: "fault",
 }
 
