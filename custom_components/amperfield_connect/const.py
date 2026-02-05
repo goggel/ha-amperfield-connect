@@ -122,6 +122,31 @@ class RegisterSpec:
     solar_only: bool = False  # Only read for solar/solar pro models
 
 
+# Helper functions for decoding register values
+def _decode_uint16(registers: list[int]) -> int:
+    """Decode single 16-bit unsigned integer."""
+    return registers[0]
+
+
+def _decode_uint16_scaled(registers: list[int], scale: float) -> float:
+    """Decode 16-bit unsigned integer with scaling."""
+    return registers[0] / scale
+
+
+def _decode_int16_scaled(registers: list[int], scale: float) -> float:
+    """Decode 16-bit signed integer with scaling."""
+    value = registers[0]
+    # Convert from unsigned to signed (two's complement)
+    if value >= 32768:
+        value = value - 65536
+    return value / scale
+
+
+def _decode_uint32(registers: list[int]) -> int:
+    """Decode 32-bit unsigned integer from two registers (big-endian)."""
+    return (registers[0] << 16) | registers[1]
+
+
 # Register mapping: data_key -> register specification
 # This map defines how to read each data key from Modbus registers
 REGISTER_MAP: dict[str, RegisterSpec] = {
@@ -130,151 +155,151 @@ REGISTER_MAP: dict[str, RegisterSpec] = {
         register_type="input",
         start_address=REG_CHARGING_STATE,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
     ),
     "current_l1": RegisterSpec(
         register_type="input",
         start_address=REG_CURRENT_L1,
         count=1,
-        decoder=lambda r: r[0] / 10.0,
+        decoder=lambda r: _decode_uint16_scaled(r, 10.0),
     ),
     "current_l2": RegisterSpec(
         register_type="input",
         start_address=REG_CURRENT_L2,
         count=1,
-        decoder=lambda r: r[0] / 10.0,
+        decoder=lambda r: _decode_uint16_scaled(r, 10.0),
     ),
     "current_l3": RegisterSpec(
         register_type="input",
         start_address=REG_CURRENT_L3,
         count=1,
-        decoder=lambda r: r[0] / 10.0,
+        decoder=lambda r: _decode_uint16_scaled(r, 10.0),
     ),
     "temperature": RegisterSpec(
         register_type="input",
         start_address=REG_TEMPERATURE,
         count=1,
-        decoder=lambda r: ((r[0] - 65536) if r[0] > 32767 else r[0]) / 10.0,  # Signed value
+        decoder=lambda r: _decode_int16_scaled(r, 10.0),  # Signed value
     ),
     "voltage_l1": RegisterSpec(
         register_type="input",
         start_address=REG_VOLTAGE_L1,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
     ),
     "voltage_l2": RegisterSpec(
         register_type="input",
         start_address=REG_VOLTAGE_L2,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
     ),
     "voltage_l3": RegisterSpec(
         register_type="input",
         start_address=REG_VOLTAGE_L3,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
     ),
     "extern_lock": RegisterSpec(
         register_type="input",
         start_address=REG_EXTERN_LOCK,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
     ),
     "power": RegisterSpec(
         register_type="input",
         start_address=REG_POWER,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
     ),
     "energy_poweron": RegisterSpec(
         register_type="input",
         start_address=REG_ENERGY_POWERON_HIGH,
         count=2,
-        decoder=lambda r: (r[0] << 16) + r[1],  # 32-bit value
+        decoder=_decode_uint32,  # 32-bit value
     ),
     "energy_installation": RegisterSpec(
         register_type="input",
         start_address=REG_ENERGY_INSTALL_HIGH,
         count=2,
-        decoder=lambda r: (r[0] << 16) + r[1],  # 32-bit value
+        decoder=_decode_uint32,  # 32-bit value
     ),
     "energy_cycle": RegisterSpec(
         register_type="input",
         start_address=REG_ENERGY_CYCLE_HIGH,
         count=2,
-        decoder=lambda r: (r[0] << 16) + r[1],  # 32-bit value
+        decoder=_decode_uint32,  # 32-bit value
     ),
     "power_l1": RegisterSpec(
         register_type="input",
         start_address=REG_POWER_L1,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
     ),
     "power_l2": RegisterSpec(
         register_type="input",
         start_address=REG_POWER_L2,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
     ),
     "power_l3": RegisterSpec(
         register_type="input",
         start_address=REG_POWER_L3,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
     ),
     # Hardware limits
     "hw_max_current": RegisterSpec(
         register_type="input",
         start_address=REG_HW_MAX_CURRENT,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
     ),
     # Holding registers (control values)
     "remote_lock": RegisterSpec(
         register_type="holding",
         start_address=REG_REMOTE_LOCK,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
     ),
     "max_current": RegisterSpec(
         register_type="holding",
         start_address=REG_MAX_CURRENT,
         count=1,
-        decoder=lambda r: r[0] / 10.0,
+        decoder=lambda r: _decode_uint16_scaled(r, 10.0),
     ),
     "failsafe_current": RegisterSpec(
         register_type="holding",
         start_address=REG_FAILSAFE_CURRENT,
         count=1,
-        decoder=lambda r: r[0] / 10.0,
+        decoder=lambda r: _decode_uint16_scaled(r, 10.0),
     ),
     # Solar/Solar PRO only - input registers
     "max_power_set": RegisterSpec(
         register_type="input",
         start_address=REG_MAX_POWER_SET,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
         solar_only=True,
     ),
     "phase_switch_state": RegisterSpec(
         register_type="input",
         start_address=REG_PHASE_SWITCH_STATE,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
         solar_only=True,
     ),
     "charging_strategy_status": RegisterSpec(
         register_type="input",
         start_address=REG_CHARGING_STRATEGY_STATUS,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
         solar_only=True,
     ),
     "disconnect_simulation_status": RegisterSpec(
         register_type="input",
         start_address=REG_DISCONNECT_SIMULATION_STATUS,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
         solar_only=True,
     ),
     # Solar/Solar PRO only - holding registers
@@ -282,21 +307,21 @@ REGISTER_MAP: dict[str, RegisterSpec] = {
         register_type="holding",
         start_address=REG_MAX_POWER_TARGET,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
         solar_only=True,
     ),
     "phase_switch_control": RegisterSpec(
         register_type="holding",
         start_address=REG_PHASE_SWITCH_CONTROL,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
         solar_only=True,
     ),
     "charging_strategy": RegisterSpec(
         register_type="holding",
         start_address=REG_CHARGING_STRATEGY,
         count=1,
-        decoder=lambda r: r[0],
+        decoder=_decode_uint16,
         solar_only=True,
     ),
 }

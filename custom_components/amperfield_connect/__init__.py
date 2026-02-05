@@ -98,7 +98,6 @@ class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
         Only fetches data for keys that have active entity subscriptions.
         Falls back to full fetch if no subscriptions exist yet.
         """
-        _LOGGER.debug("Coordinator requesting data update")
         try:
             required_keys = self._get_required_data_keys()
 
@@ -107,15 +106,8 @@ class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("No entity subscriptions yet, using legacy fetch_all_data()")
                 data = await self.client.fetch_all_data()
             else:
-                # Smart fetch only required data
-                _LOGGER.debug(
-                    "Smart fetch: %d entities subscribed to %d data keys",
-                    sum(len(subs) for subs in self._subscriptions.values()),
-                    len(required_keys),
-                )
                 data = await self.client.fetch_selected_data(required_keys)
 
-            _LOGGER.debug("Coordinator received data update successfully")
             return data
         except Exception as err:
             _LOGGER.warning("Coordinator update failed: %s", err)
