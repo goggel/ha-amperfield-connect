@@ -44,6 +44,7 @@ class AmperfieldRemoteLockSwitch(CoordinatorEntity, SwitchEntity):
 
     _attr_has_entity_name = True
     _attr_translation_key = "remote_lock"
+    _required_data_keys = ["remote_lock"]
 
     def __init__(
         self,
@@ -57,6 +58,17 @@ class AmperfieldRemoteLockSwitch(CoordinatorEntity, SwitchEntity):
         self.client = client
         self._attr_device_info = device_info
         self._attr_unique_id = f"{name_prefix.lower()}_remote_lock"
+
+    async def async_added_to_hass(self) -> None:
+        """Register data subscriptions when entity is added."""
+        await super().async_added_to_hass()
+        if self._required_data_keys:
+            self.coordinator.subscribe(self.entity_id, self._required_data_keys)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unregister subscriptions when entity is removed."""
+        self.coordinator.unsubscribe(self.entity_id)
+        await super().async_will_remove_from_hass()
 
     @property
     def icon(self) -> str:

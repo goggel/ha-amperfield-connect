@@ -54,6 +54,7 @@ class AmperfieldChargingStrategySelect(CoordinatorEntity, SelectEntity):
     _attr_translation_key = "charging_strategy"
     _attr_options = list(CHARGING_STRATEGIES.values())
     _attr_entity_registry_enabled_default = False
+    _required_data_keys = ["charging_strategy"]
 
     def __init__(
         self,
@@ -67,6 +68,17 @@ class AmperfieldChargingStrategySelect(CoordinatorEntity, SelectEntity):
         self.client = client
         self._attr_device_info = device_info
         self._attr_unique_id = f"{name_prefix.lower()}_charging_strategy"
+
+    async def async_added_to_hass(self) -> None:
+        """Register data subscriptions when entity is added."""
+        await super().async_added_to_hass()
+        if self._required_data_keys:
+            self.coordinator.subscribe(self.entity_id, self._required_data_keys)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unregister subscriptions when entity is removed."""
+        self.coordinator.unsubscribe(self.entity_id)
+        await super().async_will_remove_from_hass()
 
     @property
     def current_option(self) -> str | None:

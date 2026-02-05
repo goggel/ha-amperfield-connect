@@ -44,6 +44,7 @@ class AmperfieldBinarySensorBase(CoordinatorEntity, BinarySensorEntity):
     """Base class for Amperfield binary sensor entities."""
 
     _attr_has_entity_name = True
+    _required_data_keys: list[str] = []  # Override in subclasses
 
     def __init__(
         self,
@@ -56,6 +57,17 @@ class AmperfieldBinarySensorBase(CoordinatorEntity, BinarySensorEntity):
         self._attr_device_info = device_info
         self._name_prefix = name_prefix
 
+    async def async_added_to_hass(self) -> None:
+        """Register data subscriptions when entity is added."""
+        await super().async_added_to_hass()
+        if self._required_data_keys:
+            self.coordinator.subscribe(self.entity_id, self._required_data_keys)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unregister subscriptions when entity is removed."""
+        self.coordinator.unsubscribe(self.entity_id)
+        await super().async_will_remove_from_hass()
+
 
 class AmperfieldPhaseSwitchingAvailableBinarySensor(AmperfieldBinarySensorBase):
     """Diagnostic binary sensor showing if automatic phase switching is available."""
@@ -63,6 +75,7 @@ class AmperfieldPhaseSwitchingAvailableBinarySensor(AmperfieldBinarySensorBase):
     _attr_translation_key = "phase_switching_available"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_entity_registry_enabled_default = False
+    _required_data_keys = ["phase_switch_state"]
 
     def __init__(
         self,
@@ -85,6 +98,7 @@ class AmperfieldVehicleConnectedBinarySensor(AmperfieldBinarySensorBase):
 
     _attr_translation_key = "vehicle_connected"
     _attr_device_class = BinarySensorDeviceClass.PLUG
+    _required_data_keys = ["charging_state"]
 
     def __init__(
         self,
@@ -111,6 +125,7 @@ class AmperfieldChargingAllowedBinarySensor(AmperfieldBinarySensorBase):
     """Binary sensor showing if the wallbox allows charging."""
 
     _attr_translation_key = "charging_allowed"
+    _required_data_keys = ["charging_state"]
 
     def __init__(
         self,
@@ -139,6 +154,7 @@ class AmperfieldVehicleRequestsChargingBinarySensor(AmperfieldBinarySensorBase):
     """Binary sensor showing if the vehicle is requesting to charge."""
 
     _attr_translation_key = "vehicle_requests_charging"
+    _required_data_keys = ["charging_state"]
 
     def __init__(
         self,

@@ -8,6 +8,7 @@ from typing import Any
 from pymodbus.client import AsyncModbusTcpClient
 
 from .const import (
+    REGISTER_MAP,
     REG_CHARGING_STATE,
     REG_CHARGING_STRATEGY,
     REG_CHARGING_STRATEGY_STATUS,
@@ -46,6 +47,7 @@ from .const import (
     REG_VOLTAGE_L2,
     REG_VOLTAGE_L3,
     REG_WATCHDOG_TIMEOUT,
+    RegisterSpec,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -477,6 +479,95 @@ class AmperfieldModbusClient:
                         raise
         # Unreachable, but satisfies type checker
         raise ConnectionError("Failed to fetch data")
+
+    async def fetch_selected_data(self, required_keys: set[str]) -> dict[str, Any]:
+        """Fetch only the data keys that are needed by enabled entities.
+
+        Uses intelligent batching to optimize Modbus reads:
+        - Groups contiguous registers for bulk reads
+        - Reads isolated registers individually
+        - Retries once on connection error
+
+        Args:
+            required_keys: Set of data keys to fetch (e.g., {"charging_state", "power"})
+
+        Returns:
+            Dictionary mapping data keys to their decoded values
+        """
+        _LOGGER.debug("Starting smart fetch for %d data keys: %s", len(required_keys), sorted(required_keys))
+        async with self._lock:
+            for attempt in range(2):
+                try:
+                    await self._ensure_connected()
+                    data = await self._do_fetch_selected_data(required_keys)
+                    _LOGGER.debug(
+                        "Smart fetch complete: %d values retrieved",
+                        len(data),
+                    )
+                    return data
+                except Exception as err:
+                    if attempt == 0:
+                        _LOGGER.debug("Fetch failed, reconnecting and retrying: %s", err)
+                        self._client.close()
+                    else:
+                        _LOGGER.error("Exception fetching selected data: %s", err)
+                        raise
+        # Unreachable, but satisfies type checker
+        raise ConnectionError("Failed to fetch data")
+
+    async def _do_fetch_selected_data(self, required_keys: set[str]) -> dict[str, Any]:
+        """Internal method to fetch selected data (must be called while holding lock).
+
+        Reads each register individually as requested.
+        """
+        data: dict[str, Any] = {}
+
+        for key in required_keys:
+            if key not in REGISTER_MAP:
+                _LOGGER.warning("Data key '%s' not found in REGISTER_MAP, skipping", key)
+                continue
+
+            spec = REGISTER_MAP[key]
+
+            try:
+                # Read the register(s) for this data key
+                if spec.register_type == "input":
+                    result = await self._client.read_input_registers(
+                        address=spec.start_address, count=spec.count
+                    )
+                else:
+                    result = await self._client.read_holding_registers(
+                        address=spec.start_address, count=spec.count
+                    )
+
+                if result.isError():
+                    _LOGGER.error(
+                        "Error reading %s register(s) at %d (count=%d) for key '%s': %s",
+                        spec.register_type,
+                        spec.start_address,
+                        spec.count,
+                        key,
+                        result,
+                    )
+                    data[key] = None
+                    continue
+
+                # Decode the value
+                data[key] = spec.decoder(result.registers)
+                _LOGGER.debug(
+                    "Read %s register %d (count=%d): %s = %s",
+                    spec.register_type,
+                    spec.start_address,
+                    spec.count,
+                    key,
+                    data[key],
+                )
+
+            except Exception as err:
+                _LOGGER.error("Exception reading %s: %s", key, err)
+                data[key] = None
+
+        return data
 
     async def fetch_device_info(self) -> dict[str, Any]:
         _LOGGER.debug("Fetching device identification info")

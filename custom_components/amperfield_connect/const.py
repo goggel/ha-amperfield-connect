@@ -1,4 +1,8 @@
 """Constants for the Amperfield Wallbox Connect integration."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Callable, Literal
 
 DOMAIN = "amperfield_connect"
 DEFAULT_PORT = 502
@@ -104,4 +108,195 @@ MODEL_MAPPING = {
     "00.779.3219": "Energy Control 11kW", # (7.5m)
     # connect.solar PRO 11 kW
     "00.779.3162": "connect.solar PRO 11kW", # (7.5m)
+}
+
+
+@dataclass
+class RegisterSpec:
+    """Specification for reading a Modbus register."""
+
+    register_type: Literal["input", "holding"]
+    start_address: int
+    count: int  # Number of registers
+    decoder: Callable[[list[int]], Any]  # Function to decode raw register values
+    solar_only: bool = False  # Only read for solar/solar pro models
+
+
+# Register mapping: data_key -> register specification
+# This map defines how to read each data key from Modbus registers
+REGISTER_MAP: dict[str, RegisterSpec] = {
+    # Basic sensor data (input registers 5-23)
+    "charging_state": RegisterSpec(
+        register_type="input",
+        start_address=REG_CHARGING_STATE,
+        count=1,
+        decoder=lambda r: r[0],
+    ),
+    "current_l1": RegisterSpec(
+        register_type="input",
+        start_address=REG_CURRENT_L1,
+        count=1,
+        decoder=lambda r: r[0] / 10.0,
+    ),
+    "current_l2": RegisterSpec(
+        register_type="input",
+        start_address=REG_CURRENT_L2,
+        count=1,
+        decoder=lambda r: r[0] / 10.0,
+    ),
+    "current_l3": RegisterSpec(
+        register_type="input",
+        start_address=REG_CURRENT_L3,
+        count=1,
+        decoder=lambda r: r[0] / 10.0,
+    ),
+    "temperature": RegisterSpec(
+        register_type="input",
+        start_address=REG_TEMPERATURE,
+        count=1,
+        decoder=lambda r: ((r[0] - 65536) if r[0] > 32767 else r[0]) / 10.0,  # Signed value
+    ),
+    "voltage_l1": RegisterSpec(
+        register_type="input",
+        start_address=REG_VOLTAGE_L1,
+        count=1,
+        decoder=lambda r: r[0],
+    ),
+    "voltage_l2": RegisterSpec(
+        register_type="input",
+        start_address=REG_VOLTAGE_L2,
+        count=1,
+        decoder=lambda r: r[0],
+    ),
+    "voltage_l3": RegisterSpec(
+        register_type="input",
+        start_address=REG_VOLTAGE_L3,
+        count=1,
+        decoder=lambda r: r[0],
+    ),
+    "extern_lock": RegisterSpec(
+        register_type="input",
+        start_address=REG_EXTERN_LOCK,
+        count=1,
+        decoder=lambda r: r[0],
+    ),
+    "power": RegisterSpec(
+        register_type="input",
+        start_address=REG_POWER,
+        count=1,
+        decoder=lambda r: r[0],
+    ),
+    "energy_poweron": RegisterSpec(
+        register_type="input",
+        start_address=REG_ENERGY_POWERON_HIGH,
+        count=2,
+        decoder=lambda r: (r[0] << 16) + r[1],  # 32-bit value
+    ),
+    "energy_installation": RegisterSpec(
+        register_type="input",
+        start_address=REG_ENERGY_INSTALL_HIGH,
+        count=2,
+        decoder=lambda r: (r[0] << 16) + r[1],  # 32-bit value
+    ),
+    "energy_cycle": RegisterSpec(
+        register_type="input",
+        start_address=REG_ENERGY_CYCLE_HIGH,
+        count=2,
+        decoder=lambda r: (r[0] << 16) + r[1],  # 32-bit value
+    ),
+    "power_l1": RegisterSpec(
+        register_type="input",
+        start_address=REG_POWER_L1,
+        count=1,
+        decoder=lambda r: r[0],
+    ),
+    "power_l2": RegisterSpec(
+        register_type="input",
+        start_address=REG_POWER_L2,
+        count=1,
+        decoder=lambda r: r[0],
+    ),
+    "power_l3": RegisterSpec(
+        register_type="input",
+        start_address=REG_POWER_L3,
+        count=1,
+        decoder=lambda r: r[0],
+    ),
+    # Hardware limits
+    "hw_max_current": RegisterSpec(
+        register_type="input",
+        start_address=REG_HW_MAX_CURRENT,
+        count=1,
+        decoder=lambda r: r[0],
+    ),
+    # Holding registers (control values)
+    "remote_lock": RegisterSpec(
+        register_type="holding",
+        start_address=REG_REMOTE_LOCK,
+        count=1,
+        decoder=lambda r: r[0],
+    ),
+    "max_current": RegisterSpec(
+        register_type="holding",
+        start_address=REG_MAX_CURRENT,
+        count=1,
+        decoder=lambda r: r[0] / 10.0,
+    ),
+    "failsafe_current": RegisterSpec(
+        register_type="holding",
+        start_address=REG_FAILSAFE_CURRENT,
+        count=1,
+        decoder=lambda r: r[0] / 10.0,
+    ),
+    # Solar/Solar PRO only - input registers
+    "max_power_set": RegisterSpec(
+        register_type="input",
+        start_address=REG_MAX_POWER_SET,
+        count=1,
+        decoder=lambda r: r[0],
+        solar_only=True,
+    ),
+    "phase_switch_state": RegisterSpec(
+        register_type="input",
+        start_address=REG_PHASE_SWITCH_STATE,
+        count=1,
+        decoder=lambda r: r[0],
+        solar_only=True,
+    ),
+    "charging_strategy_status": RegisterSpec(
+        register_type="input",
+        start_address=REG_CHARGING_STRATEGY_STATUS,
+        count=1,
+        decoder=lambda r: r[0],
+        solar_only=True,
+    ),
+    "disconnect_simulation_status": RegisterSpec(
+        register_type="input",
+        start_address=REG_DISCONNECT_SIMULATION_STATUS,
+        count=1,
+        decoder=lambda r: r[0],
+        solar_only=True,
+    ),
+    # Solar/Solar PRO only - holding registers
+    "max_power_target": RegisterSpec(
+        register_type="holding",
+        start_address=REG_MAX_POWER_TARGET,
+        count=1,
+        decoder=lambda r: r[0],
+        solar_only=True,
+    ),
+    "phase_switch_control": RegisterSpec(
+        register_type="holding",
+        start_address=REG_PHASE_SWITCH_CONTROL,
+        count=1,
+        decoder=lambda r: r[0],
+        solar_only=True,
+    ),
+    "charging_strategy": RegisterSpec(
+        register_type="holding",
+        start_address=REG_CHARGING_STRATEGY,
+        count=1,
+        decoder=lambda r: r[0],
+        solar_only=True,
+    ),
 }

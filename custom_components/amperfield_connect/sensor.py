@@ -76,6 +76,7 @@ class AmperfieldSensorBase(CoordinatorEntity, SensorEntity):
     """Base class for Amperfield sensors."""
 
     _attr_has_entity_name = True
+    _required_data_keys: list[str] = []  # Override in subclasses
 
     def __init__(
         self,
@@ -88,6 +89,17 @@ class AmperfieldSensorBase(CoordinatorEntity, SensorEntity):
         self._attr_device_info = device_info
         self._name_prefix = name_prefix
 
+    async def async_added_to_hass(self) -> None:
+        """Register data subscriptions when entity is added."""
+        await super().async_added_to_hass()
+        if self._required_data_keys:
+            self.coordinator.subscribe(self.entity_id, self._required_data_keys)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unregister subscriptions when entity is removed."""
+        self.coordinator.unsubscribe(self.entity_id)
+        await super().async_will_remove_from_hass()
+
 
 class AmperfieldChargingStateSensor(AmperfieldSensorBase):
     """Charging state sensor."""
@@ -95,6 +107,7 @@ class AmperfieldChargingStateSensor(AmperfieldSensorBase):
     _attr_translation_key = "charging_state"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = list(CHARGING_STATES.values())
+    _required_data_keys = ["charging_state"]
 
     def __init__(
         self,
@@ -135,6 +148,7 @@ class AmperfieldCurrentSensor(AmperfieldSensorBase):
         self.phase = phase
         self._attr_translation_key = f"current_{phase}"
         self._attr_unique_id = f"{name_prefix.lower()}_current_{phase}"
+        self._required_data_keys = [f"current_{phase}"]
 
     @property
     def native_value(self) -> float | None:
@@ -162,6 +176,7 @@ class AmperfieldVoltageSensor(AmperfieldSensorBase):
         self.phase = phase
         self._attr_translation_key = f"voltage_{phase}"
         self._attr_unique_id = f"{name_prefix.lower()}_voltage_{phase}"
+        self._required_data_keys = [f"voltage_{phase}"]
 
     @property
     def native_value(self) -> int | None:
@@ -189,10 +204,12 @@ class AmperfieldPowerSensor(AmperfieldSensorBase):
         if phase == "total":
             self._attr_translation_key = "power"
             self._attr_unique_id = f"{name_prefix.lower()}_power"
+            self._required_data_keys = ["power"]
         else:
             self._attr_translation_key = f"power_{phase}"
             self._attr_unique_id = f"{name_prefix.lower()}_power_{phase}"
             self._attr_entity_registry_enabled_default = False
+            self._required_data_keys = [f"power_{phase}"]
 
     @property
     def native_value(self) -> int | None:
@@ -210,6 +227,7 @@ class AmperfieldTemperatureSensor(AmperfieldSensorBase):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_entity_registry_enabled_default = False
+    _required_data_keys = ["temperature"]
 
     def __init__(
         self,
@@ -236,6 +254,7 @@ class AmperfieldHardwareMaxCurrentSensor(AmperfieldSensorBase):
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_entity_registry_enabled_default = False
+    _required_data_keys = ["hw_max_current"]
 
     def __init__(
         self,
@@ -300,6 +319,7 @@ class AmperfieldEnergySensor(AmperfieldSensorBase):
         """Initialize the sensor."""
         super().__init__(coordinator, device_info, name_prefix)
         self.energy_type = energy_type
+        self._required_data_keys = [f"energy_{energy_type}"]
         if energy_type == "poweron":
             self._attr_translation_key = "energy_poweron"
             self._attr_unique_id = f"{name_prefix.lower()}_energy_poweron"
@@ -327,6 +347,7 @@ class AmperfieldPhaseSwitchStateSensor(AmperfieldSensorBase):
     """Phase switch state sensor."""
 
     _attr_translation_key = "phase_switch_state"
+    _required_data_keys = ["phase_switch_state"]
 
     def __init__(
         self,
@@ -355,6 +376,7 @@ class AmperfieldMaxPowerSetSensor(AmperfieldSensorBase):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_entity_registry_enabled_default = False
+    _required_data_keys = ["max_power_set"]
 
     def __init__(
         self,

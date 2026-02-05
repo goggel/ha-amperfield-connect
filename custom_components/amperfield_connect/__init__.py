@@ -19,6 +19,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MODEL_MAPPING,
+    REGISTER_MAP,
 )
 from .modbus_client import AmperfieldModbusClient
 
@@ -34,7 +35,7 @@ PLATFORMS: list[Platform] = [
 
 
 class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
-    """Class to manage fetching Amperfield data."""
+    """Class to manage fetching Amperfield data with smart entity subscription tracking."""
 
     def __init__(
         self,
@@ -44,6 +45,7 @@ class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
     ) -> None:
         """Initialize."""
         self.client = client
+        self._subscriptions: dict[str, set[str]] = {}  # {data_key: {entity_id, ...}}
         super().__init__(
             hass,
             _LOGGER,
@@ -51,15 +53,68 @@ class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=scan_interval),
         )
 
+    def subscribe(self, entity_id: str, data_keys: list[str]) -> None:
+        """Register entity's data requirements.
+
+        Args:
+            entity_id: The entity ID subscribing
+            data_keys: List of data keys the entity needs
+        """
+        for key in data_keys:
+            self._subscriptions.setdefault(key, set()).add(entity_id)
+        _LOGGER.debug(
+            "Entity %s subscribed to %d data keys: %s (total subscribers: %d)",
+            entity_id,
+            len(data_keys),
+            data_keys,
+            sum(len(subs) for subs in self._subscriptions.values()),
+        )
+
+    def unsubscribe(self, entity_id: str) -> None:
+        """Remove entity's subscriptions.
+
+        Args:
+            entity_id: The entity ID to unsubscribe
+        """
+        removed_count = 0
+        for subscribers in self._subscriptions.values():
+            if entity_id in subscribers:
+                subscribers.discard(entity_id)
+                removed_count += 1
+        _LOGGER.debug(
+            "Entity %s unsubscribed from %d data keys (remaining subscribers: %d)",
+            entity_id,
+            removed_count,
+            sum(len(subs) for subs in self._subscriptions.values()),
+        )
+
+    def _get_required_data_keys(self) -> set[str]:
+        """Return data keys that have active subscribers."""
+        return {key for key, subs in self._subscriptions.items() if subs}
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from Modbus.
 
-        Uses batch fetch to retrieve all data in a single connection,
-        since the wallbox only supports one connection at a time.
+        Only fetches data for keys that have active entity subscriptions.
+        Falls back to full fetch if no subscriptions exist yet.
         """
         _LOGGER.debug("Coordinator requesting data update")
         try:
-            data = await self.client.fetch_all_data()
+            required_keys = self._get_required_data_keys()
+
+            if not required_keys:
+                # No subscriptions yet (initial setup), use legacy fetch
+                _LOGGER.debug("No entity subscriptions yet, using legacy fetch_all_data()")
+                data = await self.client.fetch_all_data()
+            else:
+                # Smart fetch only required data
+                _LOGGER.debug(
+                    "Smart fetch: %d entities subscribed to %d data keys",
+                    sum(len(subs) for subs in self._subscriptions.values()),
+                    len(required_keys),
+                )
+                data = await self.client.fetch_selected_data(required_keys)
+
             _LOGGER.debug("Coordinator received data update successfully")
             return data
         except Exception as err:

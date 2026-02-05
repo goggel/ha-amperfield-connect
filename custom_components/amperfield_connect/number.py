@@ -50,6 +50,7 @@ class AmperfieldNumberBase(CoordinatorEntity, NumberEntity):
     """Base class for Amperfield number entities."""
 
     _attr_has_entity_name = True
+    _required_data_keys: list[str] = []  # Override in subclasses
 
     def __init__(
         self,
@@ -65,6 +66,17 @@ class AmperfieldNumberBase(CoordinatorEntity, NumberEntity):
         self._name_prefix = name_prefix
         self._attr_mode = NumberMode.BOX
 
+    async def async_added_to_hass(self) -> None:
+        """Register data subscriptions when entity is added."""
+        await super().async_added_to_hass()
+        if self._required_data_keys:
+            self.coordinator.subscribe(self.entity_id, self._required_data_keys)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unregister subscriptions when entity is removed."""
+        self.coordinator.unsubscribe(self.entity_id)
+        await super().async_will_remove_from_hass()
+
 
 class AmperfieldMaxCurrentNumber(AmperfieldNumberBase):
     """Number entity for maximum current control."""
@@ -73,6 +85,7 @@ class AmperfieldMaxCurrentNumber(AmperfieldNumberBase):
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
     _attr_native_min_value = 0
     _attr_native_step = 0.1
+    _required_data_keys = ["max_current"]
 
     def __init__(
         self,
@@ -113,6 +126,7 @@ class AmperfieldFailsafeCurrentNumber(AmperfieldNumberBase):
     _attr_native_min_value = 0
     _attr_native_step = 0.1
     _attr_entity_registry_enabled_default = False
+    _required_data_keys = ["failsafe_current"]
 
     def __init__(
         self,
@@ -150,6 +164,7 @@ class AmperfieldMaxPowerNumber(AmperfieldNumberBase):
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_native_min_value = 0
     _attr_native_step = 100
+    _required_data_keys = ["max_power_target"]
 
     def __init__(
         self,
