@@ -120,6 +120,7 @@ class RegisterSpec:
     count: int  # Number of registers
     decoder: Callable[[list[int]], Any]  # Function to decode raw register values
     solar_only: bool = False  # Only read for solar/solar pro models
+    scale: float | None = None  # Scaling factor for read/write (e.g., 10.0 for 0.1A resolution)
 
 
 # Helper functions for decoding register values
@@ -179,7 +180,7 @@ REGISTER_MAP: dict[str, RegisterSpec] = {
         register_type="input",
         start_address=REG_TEMPERATURE,
         count=1,
-        decoder=lambda r: _decode_int16_scaled(r, 10.0),  # Signed value
+        decoder=lambda r: _decode_int16_scaled(r, 10.0),
     ),
     "voltage_l1": RegisterSpec(
         register_type="input",
@@ -215,19 +216,19 @@ REGISTER_MAP: dict[str, RegisterSpec] = {
         register_type="input",
         start_address=REG_ENERGY_POWERON_HIGH,
         count=2,
-        decoder=_decode_uint32,  # 32-bit value
+        decoder=_decode_uint32,
     ),
     "energy_installation": RegisterSpec(
         register_type="input",
         start_address=REG_ENERGY_INSTALL_HIGH,
         count=2,
-        decoder=_decode_uint32,  # 32-bit value
+        decoder=_decode_uint32,
     ),
     "energy_cycle": RegisterSpec(
         register_type="input",
         start_address=REG_ENERGY_CYCLE_HIGH,
         count=2,
-        decoder=_decode_uint32,  # 32-bit value
+        decoder=_decode_uint32,
     ),
     "power_l1": RegisterSpec(
         register_type="input",
@@ -266,12 +267,14 @@ REGISTER_MAP: dict[str, RegisterSpec] = {
         start_address=REG_MAX_CURRENT,
         count=1,
         decoder=lambda r: _decode_uint16_scaled(r, 10.0),
+        scale=10.0,
     ),
     "failsafe_current": RegisterSpec(
         register_type="holding",
         start_address=REG_FAILSAFE_CURRENT,
         count=1,
         decoder=lambda r: _decode_uint16_scaled(r, 10.0),
+        scale=10.0,
     ),
     # Solar/Solar PRO only - input registers
     "max_power_set": RegisterSpec(
