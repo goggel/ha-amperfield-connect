@@ -90,7 +90,12 @@
     "number": {
       "max_current": { "name": "Maximum current" },
       "failsafe_current": { "name": "Failsafe current" },
-      "max_power_target": { "name": "Maximum power target" }
+      "max_power_target": { "name": "Maximum power target" },
+      "phase_switch_duration": { "name": "Phase switch duration" },
+      "phase_switch_waiting": { "name": "Phase switch waiting time" }
+    },
+    "button": {
+      "disconnect_simulation": { "name": "Disconnect simulation" }
     },
     "switch": {
       "remote_lock": { "name": "Charging locked" }

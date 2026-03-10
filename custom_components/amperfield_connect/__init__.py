@@ -31,6 +31,7 @@ PLATFORMS: list[Platform] = [
     Platform.NUMBER,
     Platform.SWITCH,
     Platform.SELECT,
+    Platform.BUTTON,
 ]
 
 
@@ -154,6 +155,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             model=model_name,
             sw_version=firmware_version,
             serial_number=serial_number,
+            configuration_url=f"http://{host}",
         )
 
         # Create coordinator

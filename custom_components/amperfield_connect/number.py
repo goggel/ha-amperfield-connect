@@ -6,7 +6,7 @@ from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfElectricCurrent, UnitOfPower
+from homeassistant.const import UnitOfElectricCurrent, UnitOfPower, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -37,10 +37,12 @@ async def async_setup_entry(
         AmperfieldFailsafeCurrentNumber(coordinator, client, device_info, name_prefix, hw_max_current),
     ]
 
-    # Add max power target control if phase switching is available (solar/solar pro)
+    # Add solar-only controls if phase switching is available (solar/solar pro)
     if coordinator.data.get("phase_switch_state") is not None:
-        _LOGGER.debug("Solar/Solar PRO model detected, adding max power target control")
+        _LOGGER.debug("Solar/Solar PRO model detected, adding solar number controls")
         entities.append(AmperfieldMaxPowerNumber(coordinator, client, device_info, name_prefix, hw_max_current))
+        entities.append(AmperfieldPhaseSwitchDurationNumber(coordinator, client, device_info, name_prefix))
+        entities.append(AmperfieldPhaseSwitchWaitingNumber(coordinator, client, device_info, name_prefix))
 
     _LOGGER.debug("Setting up %d number entities", len(entities))
     async_add_entities(entities)
@@ -197,4 +199,82 @@ class AmperfieldMaxPowerNumber(AmperfieldNumberBase):
         success = await self.client.set_max_power_target(watts)
         if not success:
             _LOGGER.error("Failed to set max power target to %d W", watts)
+        await self.coordinator.async_request_refresh()
+
+
+class AmperfieldPhaseSwitchDurationNumber(AmperfieldNumberBase):
+    """Number entity for phase switch duration time (solar/solar pro only)."""
+
+    _attr_translation_key = "phase_switch_duration"
+    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_native_min_value = 0
+    _attr_native_max_value = 65535
+    _attr_native_step = 1
+    _attr_entity_registry_enabled_default = False
+    _required_data_keys = ["phase_switch_duration"]
+
+    def __init__(
+        self,
+        coordinator: AmperfieldDataUpdateCoordinator,
+        client: AmperfieldModbusClient,
+        device_info: DeviceInfo,
+        name_prefix: str,
+    ) -> None:
+        """Initialize the number entity."""
+        super().__init__(coordinator, client, device_info, name_prefix)
+        self._attr_unique_id = f"{name_prefix.lower()}_phase_switch_duration"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the current value."""
+        return self.coordinator.data.get("phase_switch_duration")
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set new value with optimistic update."""
+        seconds = int(value)
+        _LOGGER.debug("Setting phase switch duration to %d s", seconds)
+        self.coordinator.data["phase_switch_duration"] = seconds
+        self.async_write_ha_state()
+        success = await self.client.set_phase_switch_duration(seconds)
+        if not success:
+            _LOGGER.error("Failed to set phase switch duration to %d s", seconds)
+        await self.coordinator.async_request_refresh()
+
+
+class AmperfieldPhaseSwitchWaitingNumber(AmperfieldNumberBase):
+    """Number entity for phase switch waiting time (solar/solar pro only)."""
+
+    _attr_translation_key = "phase_switch_waiting"
+    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_native_min_value = 0
+    _attr_native_max_value = 65535
+    _attr_native_step = 1
+    _attr_entity_registry_enabled_default = False
+    _required_data_keys = ["phase_switch_waiting"]
+
+    def __init__(
+        self,
+        coordinator: AmperfieldDataUpdateCoordinator,
+        client: AmperfieldModbusClient,
+        device_info: DeviceInfo,
+        name_prefix: str,
+    ) -> None:
+        """Initialize the number entity."""
+        super().__init__(coordinator, client, device_info, name_prefix)
+        self._attr_unique_id = f"{name_prefix.lower()}_phase_switch_waiting"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the current value."""
+        return self.coordinator.data.get("phase_switch_waiting")
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set new value with optimistic update."""
+        seconds = int(value)
+        _LOGGER.debug("Setting phase switch waiting time to %d s", seconds)
+        self.coordinator.data["phase_switch_waiting"] = seconds
+        self.async_write_ha_state()
+        success = await self.client.set_phase_switch_waiting(seconds)
+        if not success:
+            _LOGGER.error("Failed to set phase switch waiting time to %d s", seconds)
         await self.coordinator.async_request_refresh()

@@ -129,23 +129,32 @@ def _decode_uint16(registers: list[int]) -> int:
     return registers[0]
 
 
-def _decode_uint16_scaled(registers: list[int], scale: float) -> float:
-    """Decode 16-bit unsigned integer with scaling."""
-    return registers[0] / scale
-
-
-def _decode_int16_scaled(registers: list[int], scale: float) -> float:
-    """Decode 16-bit signed integer with scaling."""
+def _decode_int16(registers: list[int]) -> int:
+    """Decode 16-bit signed integer (two's complement)."""
     value = registers[0]
-    # Convert from unsigned to signed (two's complement)
     if value >= 32768:
         value = value - 65536
-    return value / scale
+    return value
 
 
 def _decode_uint32(registers: list[int]) -> int:
     """Decode 32-bit unsigned integer from two registers (big-endian)."""
     return (registers[0] << 16) | registers[1]
+
+
+def _decode_string(registers: list[int]) -> str:
+    """Decode ASCII string from multiple registers (2 chars per register)."""
+    text = ""
+    for register in registers:
+        high_byte = (register >> 8) & 0xFF
+        low_byte = register & 0xFF
+        if high_byte == 0:
+            break
+        text += chr(high_byte)
+        if low_byte == 0:
+            break
+        text += chr(low_byte)
+    return text
 
 
 # Register mapping: data_key -> register specification
@@ -162,25 +171,29 @@ REGISTER_MAP: dict[str, RegisterSpec] = {
         register_type="input",
         start_address=REG_CURRENT_L1,
         count=1,
-        decoder=lambda r: _decode_uint16_scaled(r, 10.0),
+        decoder=_decode_uint16,
+        scale=10.0,
     ),
     "current_l2": RegisterSpec(
         register_type="input",
         start_address=REG_CURRENT_L2,
         count=1,
-        decoder=lambda r: _decode_uint16_scaled(r, 10.0),
+        decoder=_decode_uint16,
+        scale=10.0,
     ),
     "current_l3": RegisterSpec(
         register_type="input",
         start_address=REG_CURRENT_L3,
         count=1,
-        decoder=lambda r: _decode_uint16_scaled(r, 10.0),
+        decoder=_decode_uint16,
+        scale=10.0,
     ),
     "temperature": RegisterSpec(
         register_type="input",
         start_address=REG_TEMPERATURE,
         count=1,
-        decoder=lambda r: _decode_int16_scaled(r, 10.0),
+        decoder=_decode_int16,
+        scale=10.0,
     ),
     "voltage_l1": RegisterSpec(
         register_type="input",
@@ -255,6 +268,49 @@ REGISTER_MAP: dict[str, RegisterSpec] = {
         count=1,
         decoder=_decode_uint16,
     ),
+    "hw_min_current": RegisterSpec(
+        register_type="input",
+        start_address=REG_HW_MIN_CURRENT,
+        count=1,
+        decoder=_decode_uint16,
+    ),
+    "modbus_version": RegisterSpec(
+        register_type="input",
+        start_address=REG_MODBUS_VERSION,
+        count=1,
+        decoder=_decode_uint16,
+    ),
+    # Device identification (string registers)
+    "serial_number": RegisterSpec(
+        register_type="input",
+        start_address=REG_SERIAL_START,
+        count=18,
+        decoder=_decode_string,
+    ),
+    "item_number": RegisterSpec(
+        register_type="input",
+        start_address=REG_ITEM_NUMBER_START,
+        count=18,
+        decoder=_decode_string,
+    ),
+    "production_date": RegisterSpec(
+        register_type="input",
+        start_address=REG_PRODUCTION_DATE_START,
+        count=18,
+        decoder=_decode_string,
+    ),
+    "firmware_version": RegisterSpec(
+        register_type="input",
+        start_address=REG_FIRMWARE_VERSION_START,
+        count=41,
+        decoder=_decode_string,
+    ),
+    "firmware_variant": RegisterSpec(
+        register_type="input",
+        start_address=REG_FIRMWARE_VARIANT_START,
+        count=41,
+        decoder=_decode_string,
+    ),
     # Holding registers (control values)
     "remote_lock": RegisterSpec(
         register_type="holding",
@@ -266,14 +322,14 @@ REGISTER_MAP: dict[str, RegisterSpec] = {
         register_type="holding",
         start_address=REG_MAX_CURRENT,
         count=1,
-        decoder=lambda r: _decode_uint16_scaled(r, 10.0),
+        decoder=_decode_uint16,
         scale=10.0,
     ),
     "failsafe_current": RegisterSpec(
         register_type="holding",
         start_address=REG_FAILSAFE_CURRENT,
         count=1,
-        decoder=lambda r: _decode_uint16_scaled(r, 10.0),
+        decoder=_decode_uint16,
         scale=10.0,
     ),
     # Solar/Solar PRO only - input registers
@@ -323,6 +379,27 @@ REGISTER_MAP: dict[str, RegisterSpec] = {
     "charging_strategy": RegisterSpec(
         register_type="holding",
         start_address=REG_CHARGING_STRATEGY,
+        count=1,
+        decoder=_decode_uint16,
+        solar_only=True,
+    ),
+    "phase_switch_duration": RegisterSpec(
+        register_type="holding",
+        start_address=REG_PHASE_SWITCH_DURATION,
+        count=1,
+        decoder=_decode_uint16,
+        solar_only=True,
+    ),
+    "phase_switch_waiting": RegisterSpec(
+        register_type="holding",
+        start_address=REG_PHASE_SWITCH_WAITING,
+        count=1,
+        decoder=_decode_uint16,
+        solar_only=True,
+    ),
+    "disconnect_simulation": RegisterSpec(
+        register_type="holding",
+        start_address=REG_DISCONNECT_SIMULATION,
         count=1,
         decoder=_decode_uint16,
         solar_only=True,

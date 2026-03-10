@@ -90,7 +90,12 @@
     "number": {
       "max_current": {"name": "Maximalstrom"},
       "failsafe_current": {"name": "Failsafe Strom"},
-      "max_power_target": {"name": "Maximale Zielleistung"}
+      "max_power_target": {"name": "Maximale Zielleistung"},
+      "phase_switch_duration": {"name": "Phasenumschaltdauer"},
+      "phase_switch_waiting": {"name": "Phasenumschalt-Wartezeit"}
+    },
+    "button": {
+      "disconnect_simulation": {"name": "Trennungssimulation"}
     },
     "switch": {
       "remote_lock": {"name": "Laden gesperrt"}
