@@ -1,7 +1,7 @@
 """The Amperfield Wallbox Connect integration."""
 from __future__ import annotations
 
-import asyncio
+from dataclasses import dataclass
 from datetime import timedelta
 import logging
 from typing import Any
@@ -14,12 +14,9 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
-    CONF_NAME_PREFIX,
-    DEFAULT_NAME_PREFIX,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MODEL_MAPPING,
-    REGISTER_MAP,
 )
 from .modbus_client import AmperfieldModbusClient
 
@@ -33,6 +30,21 @@ PLATFORMS: list[Platform] = [
     Platform.SELECT,
     Platform.BUTTON,
 ]
+
+
+@dataclass
+class AmperfieldRuntimeData:
+    """Runtime data stored on the config entry."""
+
+    client: AmperfieldModbusClient
+    coordinator: AmperfieldDataUpdateCoordinator
+    device_info: DeviceInfo
+    serial_number: str | None
+    hw_max_current: int
+
+
+# Type alias for a config entry carrying AmperfieldRuntimeData
+AmperfieldConfigEntry = ConfigEntry  # Runtime type; for type-checkers use ConfigEntry[AmperfieldRuntimeData]
 
 
 class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
@@ -55,12 +67,7 @@ class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
     def subscribe(self, entity_id: str, data_keys: list[str]) -> None:
-        """Register entity's data requirements.
-
-        Args:
-            entity_id: The entity ID subscribing
-            data_keys: List of data keys the entity needs
-        """
+        """Register entity's data requirements."""
         for key in data_keys:
             self._subscriptions.setdefault(key, set()).add(entity_id)
         _LOGGER.debug(
@@ -72,11 +79,7 @@ class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
     def unsubscribe(self, entity_id: str) -> None:
-        """Remove entity's subscriptions.
-
-        Args:
-            entity_id: The entity ID to unsubscribe
-        """
+        """Remove entity's subscriptions."""
         removed_count = 0
         for subscribers in self._subscriptions.values():
             if entity_id in subscribers:
@@ -103,7 +106,6 @@ class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
             required_keys = self._get_required_data_keys()
 
             if not required_keys:
-                # No subscriptions yet (initial setup), use legacy fetch
                 _LOGGER.debug("No entity subscriptions yet, using legacy fetch_all_data()")
                 data = await self.client.fetch_all_data()
             else:
@@ -123,7 +125,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug("Setting up Amperfield Wallbox at %s:%s", host, port)
     client = AmperfieldModbusClient(host, port)
 
-    # Test connection and fetch device info in a single connection
     try:
         _LOGGER.debug("Fetching device info from wallbox")
         device_data = await client.fetch_device_info()
@@ -135,9 +136,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         serial_number = device_data.get("serial_number")
         firmware_version = device_data.get("firmware_version")
         item_number = device_data.get("item_number")
-        hw_max_current = device_data.get("hw_max_current") or 16  # Default to 16A
+        hw_max_current = device_data.get("hw_max_current") or 16
 
-        # Get friendly model name from mapping
         model_name = MODEL_MAPPING.get(item_number, f"Unknown ({item_number})") if item_number else "Unknown"
 
         _LOGGER.info(
@@ -158,8 +158,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             configuration_url=f"http://{host}",
         )
 
-        # Create coordinator
-        scan_interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        # Read scan_interval from options first (set via OptionsFlow), fall back to entry.data
+        scan_interval = entry.options.get(
+            CONF_SCAN_INTERVAL,
+            entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        )
         _LOGGER.debug("Creating data coordinator with %ds scan interval", scan_interval)
         coordinator = AmperfieldDataUpdateCoordinator(hass, client, scan_interval)
         await coordinator.async_config_entry_first_refresh()
@@ -168,15 +171,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Failed to set up Amperfield Wallbox: %s", err)
         raise ConfigEntryNotReady(f"Failed to set up device: {err}") from err
 
-    # Store everything centrally for all platforms to use
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "client": client,
-        "coordinator": coordinator,
-        "device_info": device_info,
-        "name_prefix": entry.data.get(CONF_NAME_PREFIX, DEFAULT_NAME_PREFIX),
-        "hw_max_current": hw_max_current,
-    }
+    entry.runtime_data = AmperfieldRuntimeData(
+        client=client,
+        coordinator=coordinator,
+        device_info=device_info,
+        serial_number=serial_number,
+        hw_max_current=hw_max_current,
+    )
 
     _LOGGER.debug("Setting up platforms: %s", PLATFORMS)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -189,11 +190,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.debug("Unloading Amperfield Wallbox integration")
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        data = hass.data[DOMAIN].pop(entry.entry_id)
-        client: AmperfieldModbusClient = data["client"]
-        await client.close()
-        # Wait for wallbox to release the TCP socket (only accepts one connection)
-        await asyncio.sleep(2)
+        await entry.runtime_data.client.close()
         _LOGGER.info("Amperfield Wallbox integration unloaded")
 
     return unload_ok

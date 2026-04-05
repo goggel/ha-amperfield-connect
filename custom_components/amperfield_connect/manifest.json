@@ -4,9 +4,9 @@
   "codeowners": ["@goggel"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/benja/ha-amperfield-connect",
+  "documentation": "https://github.com/goggel/ha-amperfield-connect",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/benja/ha-amperfield-connect/issues",
+  "issue_tracker": "https://github.com/goggel/ha-amperfield-connect/issues",
   "requirements": ["pymodbus>=3.11.2,<4.0.0"],
   "version": "1.0.0"
 }

@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfElectricCurrent, UnitOfPower, UnitOfTime
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -25,24 +24,23 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Amperfield number entities from a config entry."""
-    data = hass.data[DOMAIN][config_entry.entry_id]
-    client: AmperfieldModbusClient = data["client"]
-    coordinator: AmperfieldDataUpdateCoordinator = data["coordinator"]
-    device_info: DeviceInfo = data["device_info"]
-    name_prefix: str = data["name_prefix"]
-    hw_max_current: int = data["hw_max_current"]
+    runtime_data = config_entry.runtime_data
+    client: AmperfieldModbusClient = runtime_data.client
+    coordinator: AmperfieldDataUpdateCoordinator = runtime_data.coordinator
+    device_info: DeviceInfo = runtime_data.device_info
+    serial_number: str | None = runtime_data.serial_number
+    hw_max_current: int = runtime_data.hw_max_current
 
     entities: list[NumberEntity] = [
-        AmperfieldMaxCurrentNumber(coordinator, client, device_info, name_prefix, hw_max_current),
-        AmperfieldFailsafeCurrentNumber(coordinator, client, device_info, name_prefix, hw_max_current),
+        AmperfieldMaxCurrentNumber(coordinator, client, device_info, serial_number, hw_max_current),
+        AmperfieldFailsafeCurrentNumber(coordinator, client, device_info, serial_number, hw_max_current),
     ]
 
-    # Add solar-only controls if phase switching is available (solar/solar pro)
     if coordinator.data.get("phase_switch_state") is not None:
         _LOGGER.debug("Solar/Solar PRO model detected, adding solar number controls")
-        entities.append(AmperfieldMaxPowerNumber(coordinator, client, device_info, name_prefix, hw_max_current))
-        entities.append(AmperfieldPhaseSwitchDurationNumber(coordinator, client, device_info, name_prefix))
-        entities.append(AmperfieldPhaseSwitchWaitingNumber(coordinator, client, device_info, name_prefix))
+        entities.append(AmperfieldMaxPowerNumber(coordinator, client, device_info, serial_number, hw_max_current))
+        entities.append(AmperfieldPhaseSwitchDurationNumber(coordinator, client, device_info, serial_number))
+        entities.append(AmperfieldPhaseSwitchWaitingNumber(coordinator, client, device_info, serial_number))
 
     _LOGGER.debug("Setting up %d number entities", len(entities))
     async_add_entities(entities)
@@ -52,21 +50,26 @@ class AmperfieldNumberBase(CoordinatorEntity, NumberEntity):
     """Base class for Amperfield number entities."""
 
     _attr_has_entity_name = True
-    _required_data_keys: list[str] = []  # Override in subclasses
+    _required_data_keys: list[str] = []
 
     def __init__(
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         client: AmperfieldModbusClient,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
     ) -> None:
         """Initialize the number entity."""
         super().__init__(coordinator)
         self.client = client
         self._attr_device_info = device_info
-        self._name_prefix = name_prefix
+        self._serial_number = serial_number
         self._attr_mode = NumberMode.BOX
+
+    def _unique_id(self, suffix: str) -> str:
+        """Build a stable unique_id based on serial number."""
+        prefix = self._serial_number or "amperfield"
+        return f"{prefix}_{suffix}"
 
     async def async_added_to_hass(self) -> None:
         """Register data subscriptions when entity is added."""
@@ -87,6 +90,7 @@ class AmperfieldMaxCurrentNumber(AmperfieldNumberBase):
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
     _attr_native_min_value = 0
     _attr_native_step = 0.1
+    _attr_entity_category = EntityCategory.CONFIG
     _required_data_keys = ["max_current"]
 
     def __init__(
@@ -94,29 +98,37 @@ class AmperfieldMaxCurrentNumber(AmperfieldNumberBase):
         coordinator: AmperfieldDataUpdateCoordinator,
         client: AmperfieldModbusClient,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
         hw_max_current: int,
     ) -> None:
         """Initialize the number entity."""
-        super().__init__(coordinator, client, device_info, name_prefix)
-        self._attr_unique_id = f"{name_prefix.lower()}_max_current"
+        super().__init__(coordinator, client, device_info, serial_number)
+        self._attr_unique_id = self._unique_id("max_current")
         self._attr_native_max_value = float(hw_max_current)
+        self._optimistic_value: float | None = None
 
     @property
     def native_value(self) -> float | None:
-        """Return the current value."""
+        """Return the current value, using optimistic value if set."""
+        if self._optimistic_value is not None:
+            return self._optimistic_value
         return self.coordinator.data.get("max_current")
+
+    def _handle_coordinator_update(self) -> None:
+        """Clear optimistic value when coordinator provides fresh data."""
+        self._optimistic_value = None
+        super()._handle_coordinator_update()
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value with optimistic update."""
         _LOGGER.debug("Setting max current to %.1f A", value)
-        # Optimistic update: reflect change immediately in UI
-        self.coordinator.data["max_current"] = value
+        self._optimistic_value = value
         self.async_write_ha_state()
-        # Write to device and schedule refresh
         success = await self.client.set_max_current(value)
         if not success:
             _LOGGER.error("Failed to set max current to %.1f A", value)
+            self._optimistic_value = None
+            self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
 
 
@@ -127,6 +139,7 @@ class AmperfieldFailsafeCurrentNumber(AmperfieldNumberBase):
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
     _attr_native_min_value = 0
     _attr_native_step = 0.1
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
     _required_data_keys = ["failsafe_current"]
 
@@ -135,27 +148,37 @@ class AmperfieldFailsafeCurrentNumber(AmperfieldNumberBase):
         coordinator: AmperfieldDataUpdateCoordinator,
         client: AmperfieldModbusClient,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
         hw_max_current: int,
     ) -> None:
         """Initialize the number entity."""
-        super().__init__(coordinator, client, device_info, name_prefix)
-        self._attr_unique_id = f"{name_prefix.lower()}_failsafe_current"
+        super().__init__(coordinator, client, device_info, serial_number)
+        self._attr_unique_id = self._unique_id("failsafe_current")
         self._attr_native_max_value = float(hw_max_current)
+        self._optimistic_value: float | None = None
 
     @property
     def native_value(self) -> float | None:
-        """Return the current value."""
+        """Return the current value, using optimistic value if set."""
+        if self._optimistic_value is not None:
+            return self._optimistic_value
         return self.coordinator.data.get("failsafe_current")
+
+    def _handle_coordinator_update(self) -> None:
+        """Clear optimistic value when coordinator provides fresh data."""
+        self._optimistic_value = None
+        super()._handle_coordinator_update()
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value with optimistic update."""
         _LOGGER.debug("Setting failsafe current to %.1f A", value)
-        self.coordinator.data["failsafe_current"] = value
+        self._optimistic_value = value
         self.async_write_ha_state()
         success = await self.client.set_failsafe_current(value)
         if not success:
             _LOGGER.error("Failed to set failsafe current to %.1f A", value)
+            self._optimistic_value = None
+            self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
 
 
@@ -166,6 +189,7 @@ class AmperfieldMaxPowerNumber(AmperfieldNumberBase):
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_native_min_value = 0
     _attr_native_step = 100
+    _attr_entity_category = EntityCategory.CONFIG
     _required_data_keys = ["max_power_target"]
 
     def __init__(
@@ -173,19 +197,26 @@ class AmperfieldMaxPowerNumber(AmperfieldNumberBase):
         coordinator: AmperfieldDataUpdateCoordinator,
         client: AmperfieldModbusClient,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
         hw_max_current: int,
     ) -> None:
         """Initialize the number entity."""
-        super().__init__(coordinator, client, device_info, name_prefix)
-        self._attr_unique_id = f"{name_prefix.lower()}_max_power_target"
-        # Calculate max power: hw_max_current * 230V * 3 phases
+        super().__init__(coordinator, client, device_info, serial_number)
+        self._attr_unique_id = self._unique_id("max_power_target")
         self._attr_native_max_value = float(hw_max_current * 230 * 3)
+        self._optimistic_value: int | None = None
 
     @property
     def native_value(self) -> int | None:
-        """Return the current value."""
+        """Return the current value, using optimistic value if set."""
+        if self._optimistic_value is not None:
+            return self._optimistic_value
         return self.coordinator.data.get("max_power_target")
+
+    def _handle_coordinator_update(self) -> None:
+        """Clear optimistic value when coordinator provides fresh data."""
+        self._optimistic_value = None
+        super()._handle_coordinator_update()
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value with optimistic update."""
@@ -194,11 +225,13 @@ class AmperfieldMaxPowerNumber(AmperfieldNumberBase):
             watts = 1400
             _LOGGER.debug("Rounding up max power target to minimum 1400 W")
         _LOGGER.debug("Setting max power target to %d W", watts)
-        self.coordinator.data["max_power_target"] = watts
+        self._optimistic_value = watts
         self.async_write_ha_state()
         success = await self.client.set_max_power_target(watts)
         if not success:
             _LOGGER.error("Failed to set max power target to %d W", watts)
+            self._optimistic_value = None
+            self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
 
 
@@ -210,6 +243,7 @@ class AmperfieldPhaseSwitchDurationNumber(AmperfieldNumberBase):
     _attr_native_min_value = 0
     _attr_native_max_value = 65535
     _attr_native_step = 1
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
     _required_data_keys = ["phase_switch_duration"]
 
@@ -218,26 +252,36 @@ class AmperfieldPhaseSwitchDurationNumber(AmperfieldNumberBase):
         coordinator: AmperfieldDataUpdateCoordinator,
         client: AmperfieldModbusClient,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
     ) -> None:
         """Initialize the number entity."""
-        super().__init__(coordinator, client, device_info, name_prefix)
-        self._attr_unique_id = f"{name_prefix.lower()}_phase_switch_duration"
+        super().__init__(coordinator, client, device_info, serial_number)
+        self._attr_unique_id = self._unique_id("phase_switch_duration")
+        self._optimistic_value: int | None = None
 
     @property
     def native_value(self) -> int | None:
-        """Return the current value."""
+        """Return the current value, using optimistic value if set."""
+        if self._optimistic_value is not None:
+            return self._optimistic_value
         return self.coordinator.data.get("phase_switch_duration")
+
+    def _handle_coordinator_update(self) -> None:
+        """Clear optimistic value when coordinator provides fresh data."""
+        self._optimistic_value = None
+        super()._handle_coordinator_update()
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value with optimistic update."""
         seconds = int(value)
         _LOGGER.debug("Setting phase switch duration to %d s", seconds)
-        self.coordinator.data["phase_switch_duration"] = seconds
+        self._optimistic_value = seconds
         self.async_write_ha_state()
         success = await self.client.set_phase_switch_duration(seconds)
         if not success:
             _LOGGER.error("Failed to set phase switch duration to %d s", seconds)
+            self._optimistic_value = None
+            self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
 
 
@@ -249,6 +293,7 @@ class AmperfieldPhaseSwitchWaitingNumber(AmperfieldNumberBase):
     _attr_native_min_value = 0
     _attr_native_max_value = 65535
     _attr_native_step = 1
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
     _required_data_keys = ["phase_switch_waiting"]
 
@@ -257,24 +302,34 @@ class AmperfieldPhaseSwitchWaitingNumber(AmperfieldNumberBase):
         coordinator: AmperfieldDataUpdateCoordinator,
         client: AmperfieldModbusClient,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
     ) -> None:
         """Initialize the number entity."""
-        super().__init__(coordinator, client, device_info, name_prefix)
-        self._attr_unique_id = f"{name_prefix.lower()}_phase_switch_waiting"
+        super().__init__(coordinator, client, device_info, serial_number)
+        self._attr_unique_id = self._unique_id("phase_switch_waiting")
+        self._optimistic_value: int | None = None
 
     @property
     def native_value(self) -> int | None:
-        """Return the current value."""
+        """Return the current value, using optimistic value if set."""
+        if self._optimistic_value is not None:
+            return self._optimistic_value
         return self.coordinator.data.get("phase_switch_waiting")
+
+    def _handle_coordinator_update(self) -> None:
+        """Clear optimistic value when coordinator provides fresh data."""
+        self._optimistic_value = None
+        super()._handle_coordinator_update()
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value with optimistic update."""
         seconds = int(value)
         _LOGGER.debug("Setting phase switch waiting time to %d s", seconds)
-        self.coordinator.data["phase_switch_waiting"] = seconds
+        self._optimistic_value = seconds
         self.async_write_ha_state()
         success = await self.client.set_phase_switch_waiting(seconds)
         if not success:
             _LOGGER.error("Failed to set phase switch waiting time to %d s", seconds)
+            self._optimistic_value = None
+            self.async_write_ha_state()
         await self.coordinator.async_request_refresh()

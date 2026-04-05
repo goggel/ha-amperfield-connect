@@ -6,7 +6,7 @@ import logging
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo, EntityCategory
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -22,40 +22,39 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Amperfield binary sensor entities from a config entry."""
-    data = hass.data[DOMAIN][config_entry.entry_id]
-    coordinator: AmperfieldDataUpdateCoordinator = data["coordinator"]
-    device_info: DeviceInfo = data["device_info"]
-    name_prefix: str = data["name_prefix"]
+    runtime_data = config_entry.runtime_data
+    coordinator: AmperfieldDataUpdateCoordinator = runtime_data.coordinator
+    device_info: DeviceInfo = runtime_data.device_info
+    serial_number: str | None = runtime_data.serial_number
 
-    entities = [
-        AmperfieldVehicleConnectedBinarySensor(coordinator, device_info, name_prefix),
-        AmperfieldChargingAllowedBinarySensor(coordinator, device_info, name_prefix),
-        AmperfieldVehicleRequestsChargingBinarySensor(coordinator, device_info, name_prefix),
-    ]
-
-    # Only add phase switching available sensor if phase switching is supported (solar/solar pro models)
-    if coordinator.data.get("phase_switch_state") is not None:
-        entities.append(AmperfieldPhaseSwitchingAvailableBinarySensor(coordinator, device_info, name_prefix))
-
-    async_add_entities(entities)
+    async_add_entities([
+        AmperfieldVehicleConnectedBinarySensor(coordinator, device_info, serial_number),
+        AmperfieldChargingAllowedBinarySensor(coordinator, device_info, serial_number),
+        AmperfieldVehicleRequestsChargingBinarySensor(coordinator, device_info, serial_number),
+    ])
 
 
 class AmperfieldBinarySensorBase(CoordinatorEntity, BinarySensorEntity):
     """Base class for Amperfield binary sensor entities."""
 
     _attr_has_entity_name = True
-    _required_data_keys: list[str] = []  # Override in subclasses
+    _required_data_keys: list[str] = []
 
     def __init__(
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
     ) -> None:
         """Initialize the binary sensor."""
         super().__init__(coordinator)
         self._attr_device_info = device_info
-        self._name_prefix = name_prefix
+        self._serial_number = serial_number
+
+    def _unique_id(self, suffix: str) -> str:
+        """Build a stable unique_id based on serial number."""
+        prefix = self._serial_number or "amperfield"
+        return f"{prefix}_{suffix}"
 
     async def async_added_to_hass(self) -> None:
         """Register data subscriptions when entity is added."""
@@ -69,30 +68,6 @@ class AmperfieldBinarySensorBase(CoordinatorEntity, BinarySensorEntity):
         await super().async_will_remove_from_hass()
 
 
-class AmperfieldPhaseSwitchingAvailableBinarySensor(AmperfieldBinarySensorBase):
-    """Diagnostic binary sensor showing if automatic phase switching is available."""
-
-    _attr_translation_key = "phase_switching_available"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_entity_registry_enabled_default = False
-    _required_data_keys = ["phase_switch_state"]
-
-    def __init__(
-        self,
-        coordinator: AmperfieldDataUpdateCoordinator,
-        device_info: DeviceInfo,
-        name_prefix: str,
-    ) -> None:
-        """Initialize the binary sensor."""
-        super().__init__(coordinator, device_info, name_prefix)
-        self._attr_unique_id = f"{name_prefix.lower()}_phase_switching_available"
-
-    @property
-    def is_on(self) -> bool:
-        """Return true if phase switching is available."""
-        return self.coordinator.data.get("phase_switch_state") is not None
-
-
 class AmperfieldVehicleConnectedBinarySensor(AmperfieldBinarySensorBase):
     """Binary sensor showing if a vehicle is connected."""
 
@@ -104,11 +79,11 @@ class AmperfieldVehicleConnectedBinarySensor(AmperfieldBinarySensorBase):
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
     ) -> None:
         """Initialize the binary sensor."""
-        super().__init__(coordinator, device_info, name_prefix)
-        self._attr_unique_id = f"{name_prefix.lower()}_vehicle_connected"
+        super().__init__(coordinator, device_info, serial_number)
+        self._attr_unique_id = self._unique_id("vehicle_connected")
 
     @property
     def is_on(self) -> bool | None:
@@ -131,11 +106,11 @@ class AmperfieldChargingAllowedBinarySensor(AmperfieldBinarySensorBase):
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
     ) -> None:
         """Initialize the binary sensor."""
-        super().__init__(coordinator, device_info, name_prefix)
-        self._attr_unique_id = f"{name_prefix.lower()}_charging_allowed"
+        super().__init__(coordinator, device_info, serial_number)
+        self._attr_unique_id = self._unique_id("charging_allowed")
 
     @property
     def is_on(self) -> bool | None:
@@ -160,11 +135,11 @@ class AmperfieldVehicleRequestsChargingBinarySensor(AmperfieldBinarySensorBase):
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
     ) -> None:
         """Initialize the binary sensor."""
-        super().__init__(coordinator, device_info, name_prefix)
-        self._attr_unique_id = f"{name_prefix.lower()}_vehicle_requests_charging"
+        super().__init__(coordinator, device_info, serial_number)
+        self._attr_unique_id = self._unique_id("vehicle_requests_charging")
 
     @property
     def is_on(self) -> bool | None:

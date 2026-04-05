@@ -7,14 +7,12 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL
-from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
-    CONF_NAME_PREFIX,
-    DEFAULT_NAME_PREFIX,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -28,7 +26,6 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_HOST): str,
         vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
         vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): int,
-        vol.Optional(CONF_NAME_PREFIX, default=DEFAULT_NAME_PREFIX): str,
     }
 )
 
@@ -36,7 +33,8 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect.
 
-    Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
+    Raises CannotConnect if connection or basic communication fails.
+    Any other exception propagates as-is to be caught as 'unknown' by the flow.
     """
     _LOGGER.debug("Validating connection to %s:%s", data[CONF_HOST], data[CONF_PORT])
     client = AmperfieldModbusClient(data[CONF_HOST], data[CONF_PORT])
@@ -46,7 +44,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             _LOGGER.debug("Connection test failed for %s:%s", data[CONF_HOST], data[CONF_PORT])
             raise CannotConnect
 
-        # Try to read the Modbus version to verify communication
+        # Verify communication by reading the Modbus version register
         _LOGGER.debug("Reading Modbus version to verify communication")
         version = await client.get_modbus_version()
         if version is None:
@@ -54,19 +52,12 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             raise CannotConnect
         _LOGGER.debug("Modbus version: %s", version)
 
-        # Get serial number for unique ID
         serial_number = await client.get_serial_number()
         _LOGGER.debug("Serial number: %s", serial_number)
-
+    finally:
         await client.close()
-
-    except Exception as err:
-        _LOGGER.debug("Validation failed: %s", err)
-        await client.close()
-        raise CannotConnect from err
 
     _LOGGER.info("Successfully validated connection to wallbox %s", serial_number or data[CONF_HOST])
-    # Return info that you want to store in the config entry.
     return {
         "title": f"Amperfield Wallbox {serial_number or data[CONF_HOST]}",
         "unique_id": serial_number or data[CONF_HOST],
@@ -78,9 +69,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> AmperfieldOptionsFlow:
+        """Return the options flow handler."""
+        return AmperfieldOptionsFlow()
+
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle reconfiguration of an existing entry."""
         _LOGGER.debug("Starting reconfigure flow")
         reconfigure_entry = self._get_reconfigure_entry()
@@ -100,30 +97,24 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_SCAN_INTERVAL,
                             default=reconfigure_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                         ): int,
-                        vol.Optional(
-                            CONF_NAME_PREFIX,
-                            default=reconfigure_entry.data.get(CONF_NAME_PREFIX, DEFAULT_NAME_PREFIX),
-                        ): str,
                     }
                 ),
             )
 
         errors = {}
 
-        # Close existing persistent connection before testing the new one,
+        # Close the existing connection before testing the new one,
         # since the wallbox only accepts one Modbus TCP connection at a time.
-        existing_data = self.hass.data.get(DOMAIN, {}).get(reconfigure_entry.entry_id)
-        if existing_data:
-            client: AmperfieldModbusClient = existing_data["client"]
+        if hasattr(reconfigure_entry, "runtime_data"):
             _LOGGER.debug("Closing existing connection before reconfigure validation")
-            await client.close()
+            await reconfigure_entry.runtime_data.client.close()
 
         try:
             await validate_input(self.hass, user_input)
         except CannotConnect:
             errors["base"] = "cannot_connect"
         except Exception:  # pylint: disable=broad-except
-            _LOGGER.exception("Unexpected exception")
+            _LOGGER.exception("Unexpected exception during reconfigure")
             errors["base"] = "unknown"
         else:
             return self.async_update_reload_and_abort(
@@ -141,10 +132,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_SCAN_INTERVAL,
                         default=user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                     ): int,
-                    vol.Optional(
-                        CONF_NAME_PREFIX,
-                        default=user_input.get(CONF_NAME_PREFIX, DEFAULT_NAME_PREFIX),
-                    ): str,
                 }
             ),
             errors=errors,
@@ -152,7 +139,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the initial step."""
         _LOGGER.debug("Starting user config flow")
         if user_input is None:
@@ -167,7 +154,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except CannotConnect:
             errors["base"] = "cannot_connect"
         except Exception:  # pylint: disable=broad-except
-            _LOGGER.exception("Unexpected exception")
+            _LOGGER.exception("Unexpected exception during config flow")
             errors["base"] = "unknown"
         else:
             await self.async_set_unique_id(info["unique_id"])
@@ -176,6 +163,31 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+        )
+
+
+class AmperfieldOptionsFlow(config_entries.OptionsFlow):
+    """Handle options for Amperfield Wallbox Connect."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current_scan_interval = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL,
+            self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_SCAN_INTERVAL, default=current_scan_interval): int,
+                }
+            ),
         )
 
 

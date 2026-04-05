@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -26,7 +25,6 @@ from . import AmperfieldDataUpdateCoordinator
 from .const import (
     CHARGING_STATES,
     DOMAIN,
-    MODEL_MAPPING,
     PHASE_SWITCH_STATES,
 )
 
@@ -39,35 +37,34 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Amperfield sensors from a config entry."""
-    data = hass.data[DOMAIN][config_entry.entry_id]
-    coordinator: AmperfieldDataUpdateCoordinator = data["coordinator"]
-    device_info: DeviceInfo = data["device_info"]
-    name_prefix: str = data["name_prefix"]
+    runtime_data = config_entry.runtime_data
+    coordinator: AmperfieldDataUpdateCoordinator = runtime_data.coordinator
+    device_info: DeviceInfo = runtime_data.device_info
+    serial_number: str | None = runtime_data.serial_number
 
     entities: list[SensorEntity] = [
-        AmperfieldChargingStateSensor(coordinator, device_info, name_prefix),
-        AmperfieldCurrentSensor(coordinator, device_info, name_prefix, "l1"),
-        AmperfieldCurrentSensor(coordinator, device_info, name_prefix, "l2"),
-        AmperfieldCurrentSensor(coordinator, device_info, name_prefix, "l3"),
-        AmperfieldVoltageSensor(coordinator, device_info, name_prefix, "l1"),
-        AmperfieldVoltageSensor(coordinator, device_info, name_prefix, "l2"),
-        AmperfieldVoltageSensor(coordinator, device_info, name_prefix, "l3"),
-        AmperfieldPowerSensor(coordinator, device_info, name_prefix, "total"),
-        AmperfieldPowerSensor(coordinator, device_info, name_prefix, "l1"),
-        AmperfieldPowerSensor(coordinator, device_info, name_prefix, "l2"),
-        AmperfieldPowerSensor(coordinator, device_info, name_prefix, "l3"),
-        AmperfieldTemperatureSensor(coordinator, device_info, name_prefix),
-        AmperfieldEnergySensor(coordinator, device_info, name_prefix, "poweron"),
-        AmperfieldEnergySensor(coordinator, device_info, name_prefix, "installation"),
-        AmperfieldEnergySensor(coordinator, device_info, name_prefix, "cycle"),
-        AmperfieldHardwareMaxCurrentSensor(coordinator, device_info, name_prefix),
+        AmperfieldChargingStateSensor(coordinator, device_info, serial_number),
+        AmperfieldCurrentSensor(coordinator, device_info, serial_number, "l1"),
+        AmperfieldCurrentSensor(coordinator, device_info, serial_number, "l2"),
+        AmperfieldCurrentSensor(coordinator, device_info, serial_number, "l3"),
+        AmperfieldVoltageSensor(coordinator, device_info, serial_number, "l1"),
+        AmperfieldVoltageSensor(coordinator, device_info, serial_number, "l2"),
+        AmperfieldVoltageSensor(coordinator, device_info, serial_number, "l3"),
+        AmperfieldPowerSensor(coordinator, device_info, serial_number, "total"),
+        AmperfieldPowerSensor(coordinator, device_info, serial_number, "l1"),
+        AmperfieldPowerSensor(coordinator, device_info, serial_number, "l2"),
+        AmperfieldPowerSensor(coordinator, device_info, serial_number, "l3"),
+        AmperfieldTemperatureSensor(coordinator, device_info, serial_number),
+        AmperfieldEnergySensor(coordinator, device_info, serial_number, "poweron"),
+        AmperfieldEnergySensor(coordinator, device_info, serial_number, "installation"),
+        AmperfieldEnergySensor(coordinator, device_info, serial_number, "cycle"),
+        AmperfieldHardwareMaxCurrentSensor(coordinator, device_info, serial_number),
     ]
 
     # Add phase switch state sensor if available (solar/solar pro models)
-    phase_switching_available = coordinator.data.get("phase_switch_state") is not None
-    if phase_switching_available:
-        entities.append(AmperfieldPhaseSwitchStateSensor(coordinator, device_info, name_prefix))
-        entities.append(AmperfieldMaxPowerSetSensor(coordinator, device_info, name_prefix))
+    if coordinator.data.get("phase_switch_state") is not None:
+        entities.append(AmperfieldPhaseSwitchStateSensor(coordinator, device_info, serial_number))
+        entities.append(AmperfieldMaxPowerSetSensor(coordinator, device_info, serial_number))
 
     async_add_entities(entities)
 
@@ -76,18 +73,23 @@ class AmperfieldSensorBase(CoordinatorEntity, SensorEntity):
     """Base class for Amperfield sensors."""
 
     _attr_has_entity_name = True
-    _required_data_keys: list[str] = []  # Override in subclasses
+    _required_data_keys: list[str] = []
 
     def __init__(
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._attr_device_info = device_info
-        self._name_prefix = name_prefix
+        self._serial_number = serial_number
+
+    def _unique_id(self, suffix: str) -> str:
+        """Build a stable unique_id based on serial number."""
+        prefix = self._serial_number or "amperfield"
+        return f"{prefix}_{suffix}"
 
     async def async_added_to_hass(self) -> None:
         """Register data subscriptions when entity is added."""
@@ -113,11 +115,11 @@ class AmperfieldChargingStateSensor(AmperfieldSensorBase):
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, device_info, name_prefix)
-        self._attr_unique_id = f"{name_prefix.lower()}_charging_state"
+        super().__init__(coordinator, device_info, serial_number)
+        self._attr_unique_id = self._unique_id("charging_state")
 
     @property
     def native_value(self) -> str | None:
@@ -140,14 +142,14 @@ class AmperfieldCurrentSensor(AmperfieldSensorBase):
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
         phase: str,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, device_info, name_prefix)
+        super().__init__(coordinator, device_info, serial_number)
         self.phase = phase
         self._attr_translation_key = f"current_{phase}"
-        self._attr_unique_id = f"{name_prefix.lower()}_current_{phase}"
+        self._attr_unique_id = self._unique_id(f"current_{phase}")
         self._required_data_keys = [f"current_{phase}"]
 
     @property
@@ -168,14 +170,14 @@ class AmperfieldVoltageSensor(AmperfieldSensorBase):
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
         phase: str,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, device_info, name_prefix)
+        super().__init__(coordinator, device_info, serial_number)
         self.phase = phase
         self._attr_translation_key = f"voltage_{phase}"
-        self._attr_unique_id = f"{name_prefix.lower()}_voltage_{phase}"
+        self._attr_unique_id = self._unique_id(f"voltage_{phase}")
         self._required_data_keys = [f"voltage_{phase}"]
 
     @property
@@ -195,19 +197,19 @@ class AmperfieldPowerSensor(AmperfieldSensorBase):
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
         phase: str,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, device_info, name_prefix)
+        super().__init__(coordinator, device_info, serial_number)
         self.phase = phase
         if phase == "total":
             self._attr_translation_key = "power"
-            self._attr_unique_id = f"{name_prefix.lower()}_power"
+            self._attr_unique_id = self._unique_id("power")
             self._required_data_keys = ["power"]
         else:
             self._attr_translation_key = f"power_{phase}"
-            self._attr_unique_id = f"{name_prefix.lower()}_power_{phase}"
+            self._attr_unique_id = self._unique_id(f"power_{phase}")
             self._attr_entity_registry_enabled_default = False
             self._required_data_keys = [f"power_{phase}"]
 
@@ -233,11 +235,11 @@ class AmperfieldTemperatureSensor(AmperfieldSensorBase):
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, device_info, name_prefix)
-        self._attr_unique_id = f"{name_prefix.lower()}_temperature"
+        super().__init__(coordinator, device_info, serial_number)
+        self._attr_unique_id = self._unique_id("temperature")
 
     @property
     def native_value(self) -> float | None:
@@ -260,46 +262,16 @@ class AmperfieldHardwareMaxCurrentSensor(AmperfieldSensorBase):
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, device_info, name_prefix)
-        self._attr_unique_id = f"{name_prefix.lower()}_hw_max_current"
+        super().__init__(coordinator, device_info, serial_number)
+        self._attr_unique_id = self._unique_id("hw_max_current")
 
     @property
     def native_value(self) -> int | None:
         """Return the hardware max current value."""
         return self.coordinator.data.get("hw_max_current")
-
-
-class AmperfieldFirmwareVersionSensor(AmperfieldSensorBase):
-    """Firmware version sensor."""
-
-    _attr_translation_key = "firmware_version"
-    _attr_unique_id = "amperfield_firmware_version"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    @property
-    def native_value(self) -> str | None:
-        """Return the firmware version."""
-        return self.coordinator.data.get("firmware_version")
-
-
-class AmperfieldItemNumberSensor(AmperfieldSensorBase):
-    """Item/model number sensor."""
-
-    _attr_translation_key = "item_number"
-    _attr_unique_id = "amperfield_item_number"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    @property
-    def native_value(self) -> str | None:
-        """Return the friendly model name."""
-        item_number = self.coordinator.data.get("item_number")
-        if item_number is None:
-            return None
-        # Return friendly name if mapped, otherwise return the item number
-        return MODEL_MAPPING.get(item_number, item_number)
 
 
 class AmperfieldEnergySensor(AmperfieldSensorBase):
@@ -313,24 +285,24 @@ class AmperfieldEnergySensor(AmperfieldSensorBase):
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
         energy_type: str,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, device_info, name_prefix)
+        super().__init__(coordinator, device_info, serial_number)
         self.energy_type = energy_type
         self._required_data_keys = [f"energy_{energy_type}"]
         if energy_type == "poweron":
             self._attr_translation_key = "energy_poweron"
-            self._attr_unique_id = f"{name_prefix.lower()}_energy_poweron"
+            self._attr_unique_id = self._unique_id("energy_poweron")
             self._attr_entity_registry_enabled_default = False
         elif energy_type == "installation":
             self._attr_translation_key = "energy_installation"
-            self._attr_unique_id = f"{name_prefix.lower()}_energy_installation"
+            self._attr_unique_id = self._unique_id("energy_installation")
             self._attr_entity_registry_enabled_default = False
         else:  # cycle
             self._attr_translation_key = "energy_cycle"
-            self._attr_unique_id = f"{name_prefix.lower()}_energy_cycle"
+            self._attr_unique_id = self._unique_id("energy_cycle")
             self._attr_state_class = SensorStateClass.TOTAL
 
     @property
@@ -339,7 +311,6 @@ class AmperfieldEnergySensor(AmperfieldSensorBase):
         value = self.coordinator.data.get(f"energy_{self.energy_type}")
         if value is None:
             return None
-        # Convert from VAh to kWh (VAh to Wh is same for resistive loads, then divide by 1000 for kWh)
         return float(value) / 1000
 
 
@@ -353,11 +324,11 @@ class AmperfieldPhaseSwitchStateSensor(AmperfieldSensorBase):
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, device_info, name_prefix)
-        self._attr_unique_id = f"{name_prefix.lower()}_phase_switch_state"
+        super().__init__(coordinator, device_info, serial_number)
+        self._attr_unique_id = self._unique_id("phase_switch_state")
 
     @property
     def native_value(self) -> str | None:
@@ -382,11 +353,11 @@ class AmperfieldMaxPowerSetSensor(AmperfieldSensorBase):
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
         device_info: DeviceInfo,
-        name_prefix: str,
+        serial_number: str | None,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, device_info, name_prefix)
-        self._attr_unique_id = f"{name_prefix.lower()}_max_power_set"
+        super().__init__(coordinator, device_info, serial_number)
+        self._attr_unique_id = self._unique_id("max_power_set")
 
     @property
     def native_value(self) -> int | None:

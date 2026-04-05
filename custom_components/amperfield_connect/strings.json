@@ -7,11 +7,16 @@
         "data": {
           "host": "IP Address or Hostname",
           "port": "Port",
-          "scan_interval": "Scan Interval (seconds)",
-          "name_prefix": "Name Prefix"
-        },
-        "data_description": {
-          "name_prefix": "Prefix for all entity names (useful when you have multiple wallboxes)"
+          "scan_interval": "Scan Interval (seconds)"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Wallbox",
+        "description": "Update the connection settings for your Amperfield Wallbox",
+        "data": {
+          "host": "IP Address or Hostname",
+          "port": "Port",
+          "scan_interval": "Scan Interval (seconds)"
         }
       }
     },
@@ -24,43 +29,53 @@
       "reconfigure_successful": "Configuration updated successfully"
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Wallbox Options",
+        "data": {
+          "scan_interval": "Scan Interval (seconds)"
+        }
+      }
+    }
+  },
   "entity": {
     "binary_sensor": {
-      "phase_switching_available": {"name": "Phase switching available"}
+      "vehicle_connected": { "name": "Vehicle connected" },
+      "charging_allowed": { "name": "Charging allowed" },
+      "vehicle_requests_charging": { "name": "Vehicle requests charging" }
     },
     "sensor": {
       "charging_state": {
         "name": "Charging state",
         "state": {
-          "no_vehicle_connected": "No vehicle connected",
-          "vehicle_ready_to_connect": "Vehicle ready to connect",
-          "vehicle_connected": "Vehicle connected",
-          "vehicle_ready_to_charge": "Vehicle ready to charge",
-          "charging_paused": "Charging paused",
+          "no_vehicle_no_charging": "No vehicle, wallbox locked",
+          "no_vehicle_wallbox_ready": "No vehicle, wallbox ready",
+          "vehicle_plugged_no_charging": "Vehicle plugged, wallbox locked",
+          "vehicle_plugged_wallbox_ready": "Vehicle plugged, wallbox ready",
+          "charge_request_no_charging": "Charge request, wallbox locked",
           "charging": "Charging",
           "derating": "Derating",
           "error": "Error",
-          "not_ready": "Not ready",
+          "wallbox_locked": "Wallbox locked or not ready",
           "fault": "Fault"
         }
       },
-      "current_l1": {"name": "Current L1"},
-      "current_l2": {"name": "Current L2"},
-      "current_l3": {"name": "Current L3"},
-      "voltage_l1": {"name": "Voltage L1"},
-      "voltage_l2": {"name": "Voltage L2"},
-      "voltage_l3": {"name": "Voltage L3"},
-      "power": {"name": "Power"},
-      "power_l1": {"name": "Power L1"},
-      "power_l2": {"name": "Power L2"},
-      "power_l3": {"name": "Power L3"},
-      "temperature": {"name": "Temperature"},
-      "energy_poweron": {"name": "Energy since power on"},
-      "energy_installation": {"name": "Energy since installation"},
-      "energy_cycle": {"name": "Energy charge cycle"},
-      "hw_max_current": {"name": "Hardware max current"},
-      "firmware_version": {"name": "Firmware version"},
-      "item_number": {"name": "Model"},
+      "current_l1": { "name": "Current L1" },
+      "current_l2": { "name": "Current L2" },
+      "current_l3": { "name": "Current L3" },
+      "voltage_l1": { "name": "Voltage L1" },
+      "voltage_l2": { "name": "Voltage L2" },
+      "voltage_l3": { "name": "Voltage L3" },
+      "power": { "name": "Power" },
+      "power_l1": { "name": "Power L1" },
+      "power_l2": { "name": "Power L2" },
+      "power_l3": { "name": "Power L3" },
+      "temperature": { "name": "Temperature" },
+      "energy_poweron": { "name": "Energy since power on" },
+      "energy_installation": { "name": "Energy since installation" },
+      "energy_cycle": { "name": "Energy charge cycle" },
+      "hw_max_current": { "name": "Hardware max current" },
       "phase_switch_state": {
         "name": "Phase switch state",
         "state": {
@@ -69,15 +84,20 @@
           "3_phases": "3 Phases"
         }
       },
-      "max_power_set": {"name": "Maximum power set"}
+      "max_power_set": { "name": "Maximum power set" }
     },
     "number": {
-      "max_current": {"name": "Maximum current"},
-      "failsafe_current": {"name": "Failsafe current"},
-      "max_power_target": {"name": "Maximum power target"}
+      "max_current": { "name": "Maximum current" },
+      "failsafe_current": { "name": "Failsafe current" },
+      "max_power_target": { "name": "Maximum power target" },
+      "phase_switch_duration": { "name": "Phase switch duration" },
+      "phase_switch_waiting": { "name": "Phase switch waiting time" }
+    },
+    "button": {
+      "disconnect_simulation": { "name": "Disconnect simulation" }
     },
     "switch": {
-      "remote_lock": {"name": "Charging locked"}
+      "remote_lock": { "name": "Charging locked" }
     },
     "select": {
       "charging_strategy": {

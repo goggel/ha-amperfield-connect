@@ -7,11 +7,7 @@
         "data": {
           "host": "IP Address or Hostname",
           "port": "Port",
-          "scan_interval": "Scan Interval (seconds)",
-          "name_prefix": "Name Prefix"
-        },
-        "data_description": {
-          "name_prefix": "Prefix for all entity names (useful when you have multiple wallboxes)"
+          "scan_interval": "Scan Interval (seconds)"
         }
       },
       "reconfigure": {
@@ -20,11 +16,7 @@
         "data": {
           "host": "IP Address or Hostname",
           "port": "Port",
-          "scan_interval": "Scan Interval (seconds)",
-          "name_prefix": "Name Prefix"
-        },
-        "data_description": {
-          "name_prefix": "Prefix for all entity names (useful when you have multiple wallboxes)"
+          "scan_interval": "Scan Interval (seconds)"
         }
       }
     },
@@ -37,9 +29,18 @@
       "reconfigure_successful": "Configuration updated successfully"
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Wallbox Options",
+        "data": {
+          "scan_interval": "Scan Interval (seconds)"
+        }
+      }
+    }
+  },
   "entity": {
     "binary_sensor": {
-      "phase_switching_available": { "name": "Phase switching" },
       "vehicle_connected": { "name": "Vehicle connected" },
       "charging_allowed": { "name": "Charging allowed" },
       "vehicle_requests_charging": { "name": "Vehicle requests charging" }
@@ -75,8 +76,6 @@
       "energy_installation": { "name": "Energy since installation" },
       "energy_cycle": { "name": "Energy charge cycle" },
       "hw_max_current": { "name": "Hardware max current" },
-      "firmware_version": { "name": "Firmware version" },
-      "item_number": { "name": "Model" },
       "phase_switch_state": {
         "name": "Phase switch state",
         "state": {
