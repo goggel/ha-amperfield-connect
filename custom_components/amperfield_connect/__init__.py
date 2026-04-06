@@ -13,6 +13,8 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+type AmperfieldConfigEntry = ConfigEntry[AmperfieldRuntimeData]
+
 from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -41,10 +43,6 @@ class AmperfieldRuntimeData:
     device_info: DeviceInfo
     serial_number: str | None
     hw_max_current: int
-
-
-# Type alias for a config entry carrying AmperfieldRuntimeData
-AmperfieldConfigEntry = ConfigEntry  # Runtime type; for type-checkers use ConfigEntry[AmperfieldRuntimeData]
 
 
 class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
@@ -117,7 +115,12 @@ class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error communicating with device: {err}") from err
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_reload_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) -> None:
+    """Reload the config entry when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) -> bool:
     """Set up Amperfield Wallbox Connect from a config entry."""
     host = entry.data[CONF_HOST]
     port = entry.data[CONF_PORT]
@@ -130,6 +133,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         device_data = await client.fetch_device_info()
     except Exception as err:
         _LOGGER.error("Failed to connect to Amperfield Wallbox at %s:%s: %s", host, port, err)
+        await client.close()
         raise ConfigEntryNotReady(f"Cannot connect to {host}:{port}") from err
 
     try:
@@ -169,6 +173,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     except Exception as err:
         _LOGGER.error("Failed to set up Amperfield Wallbox: %s", err)
+        await client.close()
         raise ConfigEntryNotReady(f"Failed to set up device: {err}") from err
 
     entry.runtime_data = AmperfieldRuntimeData(
@@ -181,12 +186,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.debug("Setting up platforms: %s", PLATFORMS)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     _LOGGER.info("Amperfield Wallbox integration setup complete for %s", serial_number or host)
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.debug("Unloading Amperfield Wallbox integration")
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):

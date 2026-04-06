@@ -24,7 +24,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import AmperfieldDataUpdateCoordinator
 from .const import (
     CHARGING_STATES,
-    DOMAIN,
     PHASE_SWITCH_STATES,
 )
 
@@ -318,6 +317,8 @@ class AmperfieldPhaseSwitchStateSensor(AmperfieldSensorBase):
     """Phase switch state sensor."""
 
     _attr_translation_key = "phase_switch_state"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = list(PHASE_SWITCH_STATES.values())
     _required_data_keys = ["phase_switch_state"]
 
     def __init__(

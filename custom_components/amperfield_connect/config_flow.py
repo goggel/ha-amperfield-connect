@@ -120,6 +120,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_update_reload_and_abort(
                 reconfigure_entry,
                 data_updates=user_input,
+                options={
+                    **reconfigure_entry.options,
+                    CONF_SCAN_INTERVAL: user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                },
             )
 
         return self.async_show_form(

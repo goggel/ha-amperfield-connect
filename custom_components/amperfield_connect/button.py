@@ -10,7 +10,6 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import AmperfieldDataUpdateCoordinator
-from .const import DOMAIN
 from .modbus_client import AmperfieldModbusClient
 
 _LOGGER = logging.getLogger(__name__)

@@ -5,16 +5,13 @@ import logging
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import AmperfieldDataUpdateCoordinator
-from .const import (
-    CHARGING_STRATEGIES,
-    DOMAIN,
-)
+from .const import CHARGING_STRATEGIES
 from .modbus_client import AmperfieldModbusClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -77,6 +74,7 @@ class AmperfieldChargingStrategySelect(CoordinatorEntity, SelectEntity):
         self.coordinator.unsubscribe(self.entity_id)
         await super().async_will_remove_from_hass()
 
+    @callback
     def _handle_coordinator_update(self) -> None:
         """Clear optimistic state when coordinator provides fresh data."""
         if self.coordinator.data.get("charging_strategy") is not None:

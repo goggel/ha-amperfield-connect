@@ -12,7 +12,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import AmperfieldDataUpdateCoordinator
-from .const import DOMAIN
 from .modbus_client import AmperfieldModbusClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -88,7 +87,7 @@ class AmperfieldMaxCurrentNumber(AmperfieldNumberBase):
 
     _attr_translation_key = "max_current"
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
-    _attr_native_min_value = 0
+    _attr_native_min_value = 6
     _attr_native_step = 0.1
     _attr_entity_category = EntityCategory.CONFIG
     _required_data_keys = ["max_current"]

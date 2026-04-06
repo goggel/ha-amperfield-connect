@@ -12,7 +12,7 @@ from .const import REGISTER_MAP
 _LOGGER = logging.getLogger(__name__)
 
 # Modbus operation delay
-MODBUS_DELAY = 0.05  # 50ms
+MODBUS_DELAY = 0.1  # 100ms
 
 # Heartbeat interval to keep connection alive (30 seconds)
 HEARTBEAT_INTERVAL = 30.0
