@@ -12,7 +12,7 @@ from .const import REGISTER_MAP
 _LOGGER = logging.getLogger(__name__)
 
 # Modbus operation delay
-MODBUS_DELAY = 0.1  # 100ms
+MODBUS_DELAY = 0.05  # 50ms
 
 # Heartbeat interval to keep connection alive (30 seconds)
 HEARTBEAT_INTERVAL = 30.0
@@ -426,39 +426,37 @@ class AmperfieldModbusClient:
             spec = REGISTER_MAP[key]
 
             try:
-                # Read all registers for this data key in one operation with delay.
-                # Default arguments capture spec and key by value, preventing the
-                # classic closure-in-loop variable capture bug.
-                async def _read_key(_spec=spec, _key=key):
-                    if _spec.register_type == "input":
+                # Read all registers for this data key in one operation with delay
+                async def _read_key():
+                    if spec.register_type == "input":
                         result = await self._client.read_input_registers(
-                            address=_spec.start_address, count=_spec.count
+                            address=spec.start_address, count=spec.count
                         )
                     else:
                         result = await self._client.read_holding_registers(
-                            address=_spec.start_address, count=_spec.count
+                            address=spec.start_address, count=spec.count
                         )
 
                     if result.isError():
                         _LOGGER.error(
                             "Error reading %s register(s) at %d (count=%d) for key '%s': %s",
-                            _spec.register_type,
-                            _spec.start_address,
-                            _spec.count,
-                            _key,
+                            spec.register_type,
+                            spec.start_address,
+                            spec.count,
+                            key,
                             result,
                         )
                         return None
                     else:
                         # Decode the registers, applying scale if defined
-                        raw = _spec.decoder(result.registers)
-                        decoded = raw / _spec.scale if _spec.scale else raw
+                        raw = spec.decoder(result.registers)
+                        decoded = raw / spec.scale if spec.scale else raw
                         _LOGGER.debug(
                             "Decoded %s (registers %d-%d): %s = %s",
-                            _key,
-                            _spec.start_address,
-                            _spec.start_address + _spec.count - 1,
-                            _key,
+                            key,
+                            spec.start_address,
+                            spec.start_address + spec.count - 1,
+                            key,
                             decoded,
                         )
                         return decoded

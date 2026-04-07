@@ -1,6 +1,7 @@
 """The Amperfield Wallbox Connect integration."""
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import timedelta
 import logging
@@ -197,6 +198,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) 
     _LOGGER.debug("Unloading Amperfield Wallbox integration")
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         await entry.runtime_data.client.close()
+        # Wait for wallbox to release the TCP socket (only accepts one connection)
+        await asyncio.sleep(2)
         _LOGGER.info("Amperfield Wallbox integration unloaded")
 
     return unload_ok

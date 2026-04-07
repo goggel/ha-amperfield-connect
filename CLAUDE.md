@@ -10,13 +10,13 @@ Home Assistant custom integration for **Heidelberg Amperfield Wallbox Connect** 
 
 ## Supported Wallbox Models
 
-| Item Number | Model |
-|-------------|-------|
-| 00.779.2964, 00.779.2965, 00.779.3157 | connect.business 11kW |
-| 00.779.2795, 00.779.2963 | connect.home 11kW |
-| 00.779.3056, 00.779.3057 | connect.solar 11kW |
-| 00.779.3218, 00.779.3219 | Energy Control 11kW |
-| 00.779.3162 | connect.solar PRO 11kW |
+| Item Number                           | Model                  |
+| ------------------------------------- | ---------------------- |
+| 00.779.2964, 00.779.2965, 00.779.3157 | connect.business 11kW  |
+| 00.779.2795, 00.779.2963              | connect.home 11kW      |
+| 00.779.3056, 00.779.3057              | connect.solar 11kW     |
+| 00.779.3218, 00.779.3219              | Energy Control 11kW    |
+| 00.779.3162                           | connect.solar PRO 11kW |
 
 **Note:** Solar/Solar PRO models support phase switching (1-phase/3-phase) and additional power management features.
 
@@ -47,11 +47,13 @@ custom_components/amperfield_connect/
 **CRITICAL:** The wallbox only accepts ONE Modbus TCP connection at a time.
 
 The `AmperfieldModbusClient` uses a **connect-per-request** pattern:
+
 - Each operation acquires a thread lock
 - Opens a connection, performs the operation, closes the connection
 - This prevents connection conflicts during reconfiguration or concurrent access
 
 For efficiency, batch methods are used:
+
 - `fetch_all_data()` - Reads all sensor data in a single connection
 - `fetch_device_info()` - Reads device identification in a single connection
 
@@ -76,61 +78,62 @@ Individual read/write methods still exist for write operations (e.g., setting ma
 
 ### Input Registers (Read-Only)
 
-| Register | Description | Unit |
-|----------|-------------|------|
-| 4 | Modbus version | - |
-| 5 | Charging state | enum |
-| 6-8 | Current L1/L2/L3 | 0.1 A |
-| 9 | Temperature | 0.1 °C (signed) |
-| 10-12 | Voltage L1/L2/L3 | V |
-| 13 | External lock state | 0=locked, 1=unlocked |
-| 14 | Total power | W |
-| 15-16 | Energy since power-on (32-bit) | VAh |
-| 17-18 | Energy since installation (32-bit) | VAh |
-| 19-20 | Energy charge cycle (32-bit) | VAh |
-| 21-23 | Power L1/L2/L3 | W |
-| 100 | Hardware max current | A |
-| 1000-1017 | Serial number | ASCII |
-| 1050-1067 | Item/model number | ASCII |
-| 1250-1290 | Firmware version | ASCII |
+| Register  | Description                        | Unit                 |
+| --------- | ---------------------------------- | -------------------- |
+| 4         | Modbus version                     | -                    |
+| 5         | Charging state                     | enum                 |
+| 6-8       | Current L1/L2/L3                   | 0.1 A                |
+| 9         | Temperature                        | 0.1 °C (signed)      |
+| 10-12     | Voltage L1/L2/L3                   | V                    |
+| 13        | External lock state                | 0=locked, 1=unlocked |
+| 14        | Total power                        | W                    |
+| 15-16     | Energy since power-on (32-bit)     | VAh                  |
+| 17-18     | Energy since installation (32-bit) | VAh                  |
+| 19-20     | Energy charge cycle (32-bit)       | VAh                  |
+| 21-23     | Power L1/L2/L3                     | W                    |
+| 100       | Hardware max current               | A                    |
+| 1000-1017 | Serial number                      | ASCII                |
+| 1050-1067 | Item/model number                  | ASCII                |
+| 1250-1290 | Firmware version                   | ASCII                |
 
 ### Holding Registers (Read/Write)
 
-| Register | Description | Unit |
-|----------|-------------|------|
-| 257 | Watchdog timeout | ms |
-| 259 | Remote lock | 0=locked, 1=unlocked |
-| 261 | Max current command | 0.1 A |
-| 262 | Failsafe current | 0.1 A |
+| Register | Description         | Unit                 |
+| -------- | ------------------- | -------------------- |
+| 257      | Watchdog timeout    | ms                   |
+| 259      | Remote lock         | 0=locked, 1=unlocked |
+| 261      | Max current command | 0.1 A                |
+| 262      | Failsafe current    | 0.1 A                |
 
 ### Solar/Solar PRO Only Registers
 
-| Register | Description |
-|----------|-------------|
-| 500 | Max power target (W) |
-| 501 | Phase switch control (1 or 3) |
-| 502 | Charging strategy (0=manual, 1=solar) |
-| 5000 | Max power set (read-back) |
-| 5001 | Phase switch state (0=switching, 1=1-phase, 3=3-phase) |
+| Register | Description                                            |
+| -------- | ------------------------------------------------------ |
+| 500      | Max power target (W)                                   |
+| 501      | Phase switch control (1 or 3)                          |
+| 502      | Charging strategy (0=manual, 1=solar)                  |
+| 5000     | Max power set (read-back)                              |
+| 5001     | Phase switch state (0=switching, 1=1-phase, 3=3-phase) |
 
 ## Charging States (EN 61851-1)
 
-| Value | State |
-|-------|-------|
-| 2 | No vehicle connected |
-| 3 | Vehicle ready to connect |
-| 4 | Vehicle ready to charge |
-| 5 | Waiting for wallbox release |
-| 6 | Charging paused |
-| 7 | Charging |
-| 8 | Derating |
-| 9 | Error |
-| 10 | Not ready |
-| 11 | Fault |
+| Value | State                       |
+| ----- | --------------------------- |
+| 2     | No vehicle connected        |
+| 3     | Vehicle ready to connect    |
+| 4     | Vehicle ready to charge     |
+| 5     | Waiting for wallbox release |
+| 6     | Charging paused             |
+| 7     | Charging                    |
+| 8     | Derating                    |
+| 9     | Error                       |
+| 10    | Not ready                   |
+| 11    | Fault                       |
 
 ## Entity Types
 
 ### Sensors
+
 - Charging state (enum)
 - Current L1/L2/L3 (A)
 - Voltage L1/L2/L3 (V)
@@ -142,29 +145,35 @@ Individual read/write methods still exist for write operations (e.g., setting ma
 - Max power set (solar models only)
 
 ### Binary Sensors
+
 - Vehicle connected
 - Phase switching available
 
 ### Numbers
+
 - Maximum current (6-16A, step 0.1)
 - Failsafe current (0-16A, step 0.1)
 - Maximum power target (1380-11040W, solar models only)
 
 ### Switches
+
 - Remote lock (charging locked/unlocked)
 
 ### Selects
+
 - Charging strategy (Manual/Solar-Eco, solar models only)
 
 ## Configuration
 
 ### User Config Flow
+
 - Host (IP address)
 - Port (default: 502)
 - Scan interval (default: 10 seconds)
 - Name prefix (for multiple wallboxes)
 
 ### Reconfigure Flow
+
 Allows changing all settings after initial setup without removing the integration.
 
 ## Development Notes
@@ -180,6 +189,7 @@ Allows changing all settings after initial setup without removing the integratio
 ### Translation Keys
 
 Entity names use `translation_key` attribute. Format:
+
 - Sensors: `sensor.<translation_key>.name`
 - States: `sensor.<translation_key>.state.<state_value>`
 
@@ -224,12 +234,12 @@ After changing the configuration, restart Home Assistant.
 
 The integration uses the following log levels:
 
-| Level | What's Logged |
-|-------|---------------|
-| **DEBUG** | Connection lifecycle (open/close), individual register reads/writes with addresses and values, batch data fetches, coordinator updates, entity setup |
-| **INFO** | Successful connection, device discovery (serial, model, firmware), integration setup/teardown, write operations (max current, lock, power target, strategy) |
-| **WARNING** | Connection failures, coordinator update failures |
-| **ERROR** | Modbus communication errors, failed write operations, invalid parameters |
+| Level       | What's Logged                                                                                                                                               |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **DEBUG**   | Connection lifecycle (open/close), individual register reads/writes with addresses and values, batch data fetches, coordinator updates, entity setup        |
+| **INFO**    | Successful connection, device discovery (serial, model, firmware), integration setup/teardown, write operations (max current, lock, power target, strategy) |
+| **WARNING** | Connection failures, coordinator update failures                                                                                                            |
+| **ERROR**   | Modbus communication errors, failed write operations, invalid parameters                                                                                    |
 
 ### Example Debug Output
 
@@ -254,6 +264,7 @@ DEBUG custom_components.amperfield_connect.modbus_client - Successfully wrote ho
 4. **Verify register values** match expected behavior
 
 Common patterns in logs:
+
 - `Failed to connect` - Network issue or wallbox not reachable
 - `Error reading input register` - Communication succeeded but register read failed
 - `Exception fetching all data` - General communication problem during batch fetch
@@ -261,6 +272,7 @@ Common patterns in logs:
 ### Live Log Viewing
 
 In Home Assistant, you can view logs in real-time:
+
 1. Go to **Settings → System → Logs**
 2. Filter by `amperfield_connect` to see only this integration's logs
 3. Use the **Download full log** button for detailed analysis
@@ -268,10 +280,13 @@ In Home Assistant, you can view logs in real-time:
 ## Common Issues
 
 ### Two Devices Showing
-If duplicate devices appear, delete the orphaned device manually in Home Assistant:
+
+If duplicate devices appea
+r, delete the orphaned device manually in Home Assistant:
 Settings → Devices & Services → Devices → Find orphan → Delete
 
 ### Connection Failed
+
 - Verify IP address is correct
 - Ensure Modbus TCP is enabled on wallbox
 - Check firewall allows port 502
