@@ -31,8 +31,9 @@ PLATFORMS: list[Platform] = [
     Platform.NUMBER,
     Platform.SWITCH,
     Platform.SELECT,
-    Platform.BUTTON,
 ]
+
+PARALLEL_UPDATES = 1
 
 
 @dataclass
@@ -130,10 +131,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) -
     client = AmperfieldModbusClient(host, port)
 
     try:
+        if not await client.connect():
+            raise ConfigEntryNotReady(f"Cannot connect to {host}:{port}")
+
         _LOGGER.debug("Fetching device info from wallbox")
         device_data = await client.fetch_device_info()
     except Exception as err:
-        _LOGGER.error("Failed to connect to Amperfield Wallbox at %s:%s: %s", host, port, err)
         await client.close()
         raise ConfigEntryNotReady(f"Cannot connect to {host}:{port}") from err
 
@@ -173,7 +176,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) -
         await coordinator.async_config_entry_first_refresh()
 
     except Exception as err:
-        _LOGGER.error("Failed to set up Amperfield Wallbox: %s", err)
         await client.close()
         raise ConfigEntryNotReady(f"Failed to set up device: {err}") from err
 

@@ -6,7 +6,7 @@ from typing import Any, Callable, Literal
 
 DOMAIN = "amperfield_connect"
 DEFAULT_PORT = 502
-DEFAULT_SCAN_INTERVAL = 30
+DEFAULT_SCAN_INTERVAL = 10
 CONF_NAME_PREFIX = "name_prefix"
 DEFAULT_NAME_PREFIX = "Wallbox"
 

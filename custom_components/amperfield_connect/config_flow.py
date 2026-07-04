@@ -21,11 +21,13 @@ from .modbus_client import AmperfieldModbusClient
 
 _LOGGER = logging.getLogger(__name__)
 
+SCAN_INTERVAL_SELECTOR = vol.All(vol.Coerce(int), vol.Range(min=5, max=86400))
+
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): str,
         vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
-        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): int,
+        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): SCAN_INTERVAL_SELECTOR,
     }
 )
 
@@ -96,7 +98,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         vol.Optional(
                             CONF_SCAN_INTERVAL,
                             default=reconfigure_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-                        ): int,
+                        ): SCAN_INTERVAL_SELECTOR,
                     }
                 ),
             )
@@ -135,7 +137,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Optional(
                         CONF_SCAN_INTERVAL,
                         default=user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-                    ): int,
+                    ): SCAN_INTERVAL_SELECTOR,
                 }
             ),
             errors=errors,
@@ -189,7 +191,7 @@ class AmperfieldOptionsFlow(config_entries.OptionsFlow):
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_SCAN_INTERVAL, default=current_scan_interval): int,
+                    vol.Optional(CONF_SCAN_INTERVAL, default=current_scan_interval): SCAN_INTERVAL_SELECTOR,
                 }
             ),
         )

@@ -14,8 +14,8 @@ _LOGGER = logging.getLogger(__name__)
 # Modbus operation delay
 MODBUS_DELAY = 0.05  # 50ms
 
-# Heartbeat interval to keep connection alive (30 seconds)
-HEARTBEAT_INTERVAL = 30.0
+# Keep-alive interval must stay below the wallbox watchdog default of 15 seconds.
+HEARTBEAT_INTERVAL = 10.0
 
 
 class AmperfieldModbusClient:
@@ -40,7 +40,7 @@ class AmperfieldModbusClient:
         try:
             if not self._client.connected:
                 if not await self._client.connect():
-                    _LOGGER.warning("Failed to connect to %s:%s", self.host, self.port)
+                    _LOGGER.debug("Failed to connect to %s:%s", self.host, self.port)
                     return False
                 _LOGGER.info("Successfully connected to wallbox at %s:%s", self.host, self.port)
 
@@ -170,7 +170,7 @@ class AmperfieldModbusClient:
             return False
 
         spec = REGISTER_MAP[data_key]
-        write_value = int(value * spec.scale) if spec.scale else int(value)
+        write_value = round(value * spec.scale) if spec.scale else int(value)
 
         async def _write():
             await self._ensure_connected()
@@ -334,10 +334,10 @@ class AmperfieldModbusClient:
         _LOGGER.info("Setting phase switch waiting time to %d s", seconds)
         return await self._write_using_register_map("phase_switch_waiting", seconds)
 
-    async def set_disconnect_simulation(self) -> bool:
-        """Send disconnect simulation command (value 73)."""
-        _LOGGER.info("Sending disconnect simulation command")
-        return await self._write_using_register_map("disconnect_simulation", 73)
+    async def set_disconnect_simulation(self, enabled: bool) -> bool:
+        """Enable or disable disconnect simulation."""
+        _LOGGER.info("Setting disconnect simulation to %s", "enabled" if enabled else "disabled")
+        return await self._write_using_register_map("disconnect_simulation", 1 if enabled else 0)
 
     # --- Batch data fetching ---
 

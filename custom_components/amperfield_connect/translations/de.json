@@ -93,11 +93,9 @@
       "phase_switch_duration": { "name": "Phasenumschaltdauer" },
       "phase_switch_waiting": { "name": "Phasenumschalt-Wartezeit" }
     },
-    "button": {
-      "disconnect_simulation": { "name": "Trennungssimulation" }
-    },
     "switch": {
-      "remote_lock": { "name": "Laden gesperrt" }
+      "remote_lock": { "name": "Laden gesperrt" },
+      "disconnect_simulation": { "name": "Trennungssimulation" }
     },
     "select": {
       "charging_strategy": {

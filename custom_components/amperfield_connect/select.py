@@ -6,6 +6,7 @@ import logging
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -15,6 +16,8 @@ from .const import CHARGING_STRATEGIES
 from .modbus_client import AmperfieldModbusClient
 
 _LOGGER = logging.getLogger(__name__)
+
+PARALLEL_UPDATES = 1
 
 
 async def async_setup_entry(
@@ -98,7 +101,7 @@ class AmperfieldChargingStrategySelect(CoordinatorEntity, SelectEntity):
 
         if value is None:
             _LOGGER.error("Invalid charging strategy option: %s", option)
-            return
+            raise HomeAssistantError(f"Invalid charging strategy option: {option}")
 
         self._optimistic_option = option
         self.async_write_ha_state()
@@ -107,4 +110,5 @@ class AmperfieldChargingStrategySelect(CoordinatorEntity, SelectEntity):
             _LOGGER.error("Failed to set charging strategy to '%s'", option)
             self._optimistic_option = None
             self.async_write_ha_state()
+            raise HomeAssistantError(f"Failed to set charging strategy to {option}")
         await self.coordinator.async_request_refresh()

@@ -7,6 +7,7 @@ from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfElectricCurrent, UnitOfPower, UnitOfTime
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -15,6 +16,18 @@ from . import AmperfieldDataUpdateCoordinator
 from .modbus_client import AmperfieldModbusClient
 
 _LOGGER = logging.getLogger(__name__)
+
+PARALLEL_UPDATES = 1
+
+
+def _validate_current(value: float, max_value: float, field_name: str) -> None:
+    """Validate wallbox current setting: either off or normal charging range."""
+    if value == 0 or 6 <= value <= max_value:
+        return
+
+    raise HomeAssistantError(
+        f"{field_name} must be 0 A or between 6.0 A and {max_value:.1f} A"
+    )
 
 
 async def async_setup_entry(
@@ -87,7 +100,7 @@ class AmperfieldMaxCurrentNumber(AmperfieldNumberBase):
 
     _attr_translation_key = "max_current"
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
-    _attr_native_min_value = 6
+    _attr_native_min_value = 0
     _attr_native_step = 0.1
     _attr_entity_category = EntityCategory.CONFIG
     _required_data_keys = ["max_current"]
@@ -120,6 +133,7 @@ class AmperfieldMaxCurrentNumber(AmperfieldNumberBase):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value with optimistic update."""
+        _validate_current(value, self.native_max_value, "Maximum current")
         _LOGGER.debug("Setting max current to %.1f A", value)
         self._optimistic_value = value
         self.async_write_ha_state()
@@ -128,6 +142,7 @@ class AmperfieldMaxCurrentNumber(AmperfieldNumberBase):
             _LOGGER.error("Failed to set max current to %.1f A", value)
             self._optimistic_value = None
             self.async_write_ha_state()
+            raise HomeAssistantError(f"Failed to set maximum current to {value:.1f} A")
         await self.coordinator.async_request_refresh()
 
 
@@ -170,6 +185,7 @@ class AmperfieldFailsafeCurrentNumber(AmperfieldNumberBase):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value with optimistic update."""
+        _validate_current(value, self.native_max_value, "Failsafe current")
         _LOGGER.debug("Setting failsafe current to %.1f A", value)
         self._optimistic_value = value
         self.async_write_ha_state()
@@ -178,6 +194,7 @@ class AmperfieldFailsafeCurrentNumber(AmperfieldNumberBase):
             _LOGGER.error("Failed to set failsafe current to %.1f A", value)
             self._optimistic_value = None
             self.async_write_ha_state()
+            raise HomeAssistantError(f"Failed to set failsafe current to {value:.1f} A")
         await self.coordinator.async_request_refresh()
 
 
@@ -231,6 +248,7 @@ class AmperfieldMaxPowerNumber(AmperfieldNumberBase):
             _LOGGER.error("Failed to set max power target to %d W", watts)
             self._optimistic_value = None
             self.async_write_ha_state()
+            raise HomeAssistantError(f"Failed to set maximum power target to {watts} W")
         await self.coordinator.async_request_refresh()
 
 
@@ -239,8 +257,8 @@ class AmperfieldPhaseSwitchDurationNumber(AmperfieldNumberBase):
 
     _attr_translation_key = "phase_switch_duration"
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
-    _attr_native_min_value = 0
-    _attr_native_max_value = 65535
+    _attr_native_min_value = 15
+    _attr_native_max_value = 900
     _attr_native_step = 1
     _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
@@ -281,6 +299,7 @@ class AmperfieldPhaseSwitchDurationNumber(AmperfieldNumberBase):
             _LOGGER.error("Failed to set phase switch duration to %d s", seconds)
             self._optimistic_value = None
             self.async_write_ha_state()
+            raise HomeAssistantError(f"Failed to set phase switch duration to {seconds} s")
         await self.coordinator.async_request_refresh()
 
 
@@ -290,7 +309,7 @@ class AmperfieldPhaseSwitchWaitingNumber(AmperfieldNumberBase):
     _attr_translation_key = "phase_switch_waiting"
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
     _attr_native_min_value = 0
-    _attr_native_max_value = 65535
+    _attr_native_max_value = 3600
     _attr_native_step = 1
     _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
@@ -331,4 +350,5 @@ class AmperfieldPhaseSwitchWaitingNumber(AmperfieldNumberBase):
             _LOGGER.error("Failed to set phase switch waiting time to %d s", seconds)
             self._optimistic_value = None
             self.async_write_ha_state()
+            raise HomeAssistantError(f"Failed to set phase switch waiting time to {seconds} s")
         await self.coordinator.async_request_refresh()

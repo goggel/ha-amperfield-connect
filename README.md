@@ -83,7 +83,7 @@ The wallbox can be found by:
 
 ### Watchdog Timer
 
-The integration automatically manages the Modbus watchdog timer. If communication is lost, the wallbox will use the **Failsafe Current** setting.
+The integration keeps Modbus communication active with polling and a heartbeat that are below the wallbox watchdog default. If communication is lost, the wallbox will use the **Failsafe Current** setting when watchdog timeout mode is active.
 
 ### Phase Switching (Solar/Solar Pro Only)
 

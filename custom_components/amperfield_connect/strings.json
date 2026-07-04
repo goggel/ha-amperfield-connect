@@ -93,11 +93,9 @@
       "phase_switch_duration": { "name": "Phase switch duration" },
       "phase_switch_waiting": { "name": "Phase switch waiting time" }
     },
-    "button": {
-      "disconnect_simulation": { "name": "Disconnect simulation" }
-    },
     "switch": {
-      "remote_lock": { "name": "Charging locked" }
+      "remote_lock": { "name": "Charging locked" },
+      "disconnect_simulation": { "name": "Disconnect simulation" }
     },
     "select": {
       "charging_strategy": {

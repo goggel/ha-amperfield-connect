@@ -46,16 +46,17 @@ custom_components/amperfield_connect/
 
 **CRITICAL:** The wallbox only accepts ONE Modbus TCP connection at a time.
 
-The `AmperfieldModbusClient` uses a **connect-per-request** pattern:
+The `AmperfieldModbusClient` uses one shared async TCP client per config entry:
 
-- Each operation acquires a thread lock
-- Opens a connection, performs the operation, closes the connection
-- This prevents connection conflicts during reconfiguration or concurrent access
+- All operations acquire an async lock before talking to the wallbox
+- Runtime setup calls `connect()` once and starts a 10s heartbeat
+- `close()` stops the heartbeat and releases the TCP connection on unload/reconfigure
+- This prevents concurrent requests while staying below the wallbox's default 15s watchdog timeout
 
 For efficiency, batch methods are used:
 
-- `fetch_all_data()` - Reads all sensor data in a single connection
-- `fetch_device_info()` - Reads device identification in a single connection
+- `fetch_all_data()` - Reads all sensor data through the shared client
+- `fetch_device_info()` - Reads device identification through the shared client
 
 Individual read/write methods still exist for write operations (e.g., setting max current).
 
@@ -246,11 +247,11 @@ The integration uses the following log levels:
 When debug logging is enabled, you'll see output like:
 
 ```
-DEBUG custom_components.amperfield_connect.modbus_client - Opening Modbus connection to 192.168.1.100:502
-DEBUG custom_components.amperfield_connect.modbus_client - Connected to 192.168.1.100:502
+DEBUG custom_components.amperfield_connect.modbus_client - Testing connection to 192.168.1.100:502
+INFO custom_components.amperfield_connect.modbus_client - Successfully connected to wallbox at 192.168.1.100:502
+DEBUG custom_components.amperfield_connect.modbus_client - Started heartbeat task
 DEBUG custom_components.amperfield_connect.modbus_client - Starting batch fetch of all sensor data
 DEBUG custom_components.amperfield_connect.modbus_client - Batch fetch complete: charging_state=7, power=7400W, current=10.8/10.7/10.8 A
-DEBUG custom_components.amperfield_connect.modbus_client - Closed connection to 192.168.1.100:502
 INFO custom_components.amperfield_connect.modbus_client - Setting max current to 12.0 A
 DEBUG custom_components.amperfield_connect.modbus_client - Writing holding register 261 = 120
 DEBUG custom_components.amperfield_connect.modbus_client - Successfully wrote holding register 261 = 120
