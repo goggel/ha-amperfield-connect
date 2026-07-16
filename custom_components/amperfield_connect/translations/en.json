@@ -43,7 +43,8 @@
     "binary_sensor": {
       "vehicle_connected": { "name": "Vehicle connected" },
       "charging_allowed": { "name": "Charging allowed" },
-      "vehicle_requests_charging": { "name": "Vehicle requests charging" }
+      "vehicle_requests_charging": { "name": "Vehicle requests charging" },
+      "disconnect_simulation_status": { "name": "Disconnect simulation active" }
     },
     "sensor": {
       "charging_state": {
@@ -94,8 +95,10 @@
       "phase_switch_waiting": { "name": "Phase switch waiting time" }
     },
     "switch": {
-      "remote_lock": { "name": "Charging locked" },
-      "disconnect_simulation": { "name": "Disconnect simulation" }
+      "remote_lock": { "name": "Charging locked" }
+    },
+    "button": {
+      "disconnect_simulation": { "name": "Trigger disconnect simulation" }
     },
     "select": {
       "charging_strategy": {

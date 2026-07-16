@@ -1,4 +1,5 @@
 """Sensor platform for Amperfield Wallbox Connect."""
+
 from __future__ import annotations
 
 import logging
@@ -41,7 +42,7 @@ async def async_setup_entry(
     runtime_data = config_entry.runtime_data
     coordinator: AmperfieldDataUpdateCoordinator = runtime_data.coordinator
     device_info: DeviceInfo = runtime_data.device_info
-    serial_number: str | None = runtime_data.serial_number
+    serial_number: str = runtime_data.serial_number
 
     entities: list[SensorEntity] = [
         AmperfieldChargingStateSensor(coordinator, device_info, serial_number),
@@ -63,9 +64,13 @@ async def async_setup_entry(
     ]
 
     # Add phase switch state sensor if available (solar/solar pro models)
-    if coordinator.data.get("phase_switch_state") is not None:
-        entities.append(AmperfieldPhaseSwitchStateSensor(coordinator, device_info, serial_number))
-        entities.append(AmperfieldMaxPowerSetSensor(coordinator, device_info, serial_number))
+    if runtime_data.supports_phase_switching:
+        entities.append(
+            AmperfieldPhaseSwitchStateSensor(coordinator, device_info, serial_number)
+        )
+        entities.append(
+            AmperfieldMaxPowerSetSensor(coordinator, device_info, serial_number)
+        )
 
     async_add_entities(entities)
 
@@ -75,6 +80,7 @@ class AmperfieldSensorBase(CoordinatorEntity, SensorEntity):
 
     _attr_has_entity_name = True
     _required_data_keys: list[str] = []
+    coordinator: AmperfieldDataUpdateCoordinator
 
     def __init__(
         self,
@@ -89,8 +95,7 @@ class AmperfieldSensorBase(CoordinatorEntity, SensorEntity):
 
     def _unique_id(self, suffix: str) -> str:
         """Build a stable unique_id based on serial number."""
-        prefix = self._serial_number or "amperfield"
-        return f"{prefix}_{suffix}"
+        return f"{self._serial_number}_{suffix}"
 
     async def async_added_to_hass(self) -> None:
         """Register data subscriptions when entity is added."""

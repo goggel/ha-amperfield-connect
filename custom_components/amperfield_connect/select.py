@@ -1,4 +1,5 @@
 """Select platform for Amperfield Wallbox Connect."""
+
 from __future__ import annotations
 
 import logging
@@ -30,14 +31,18 @@ async def async_setup_entry(
     client: AmperfieldModbusClient = runtime_data.client
     coordinator: AmperfieldDataUpdateCoordinator = runtime_data.coordinator
     device_info: DeviceInfo = runtime_data.device_info
-    serial_number: str | None = runtime_data.serial_number
+    serial_number: str = runtime_data.serial_number
 
     # Charging strategy only available on solar/solar pro models
-    if coordinator.data.get("phase_switch_state") is not None:
+    if runtime_data.supports_phase_switching:
         _LOGGER.debug("Solar/Solar PRO model detected, adding charging strategy select")
-        async_add_entities([
-            AmperfieldChargingStrategySelect(coordinator, client, device_info, serial_number),
-        ])
+        async_add_entities(
+            [
+                AmperfieldChargingStrategySelect(
+                    coordinator, client, device_info, serial_number
+                ),
+            ]
+        )
     else:
         _LOGGER.debug("No select entities to set up (non-solar model)")
 
@@ -51,6 +56,7 @@ class AmperfieldChargingStrategySelect(CoordinatorEntity, SelectEntity):
     _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
     _required_data_keys = ["charging_strategy"]
+    coordinator: AmperfieldDataUpdateCoordinator
 
     def __init__(
         self,
@@ -63,8 +69,7 @@ class AmperfieldChargingStrategySelect(CoordinatorEntity, SelectEntity):
         super().__init__(coordinator)
         self.client = client
         self._attr_device_info = device_info
-        prefix = serial_number or "amperfield"
-        self._attr_unique_id = f"{prefix}_charging_strategy"
+        self._attr_unique_id = f"{serial_number}_charging_strategy"
         self._optimistic_option: str | None = None
 
     async def async_added_to_hass(self) -> None:

@@ -43,7 +43,8 @@
     "binary_sensor": {
       "vehicle_connected": { "name": "Fahrzeug angeschlossen" },
       "charging_allowed": { "name": "Laden erlaubt" },
-      "vehicle_requests_charging": { "name": "Fahrzeug fordert Laden an" }
+      "vehicle_requests_charging": { "name": "Fahrzeug fordert Laden an" },
+      "disconnect_simulation_status": { "name": "Trennungssimulation aktiv" }
     },
     "sensor": {
       "charging_state": {
@@ -94,8 +95,10 @@
       "phase_switch_waiting": { "name": "Phasenumschalt-Wartezeit" }
     },
     "switch": {
-      "remote_lock": { "name": "Laden gesperrt" },
-      "disconnect_simulation": { "name": "Trennungssimulation" }
+      "remote_lock": { "name": "Laden gesperrt" }
+    },
+    "button": {
+      "disconnect_simulation": { "name": "Trennung simulieren" }
     },
     "select": {
       "charging_strategy": {

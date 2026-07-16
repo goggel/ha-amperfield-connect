@@ -27,7 +27,8 @@ This integration provides comprehensive monitoring and control of your Amperfiel
 - **Remote Lock** - Lock/unlock the wallbox remotely
 - **Maximum Power Target** - Set target power in Watts, wallbox automatically switches phases (solar/solar pro only)
 - **Charging Strategy** - Select Manual or Solar/Eco mode (solar/solar pro only)
-- **Disconnect Simulation** - Enable/disable disconnect simulation for phase switching (solar/solar pro only)
+- **Disconnect Simulation** - Trigger the disconnect simulation command (solar/solar pro only)
+- **Disconnect Simulation Active** - Optional diagnostic status (disabled by default)
 
 ## Installation
 

@@ -1,4 +1,5 @@
 """Constants for the Amperfield Wallbox Connect integration."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -63,12 +64,12 @@ REG_DISCONNECT_SIMULATION_STATUS = 5003
 # Charging States (EN 61851-1 standard)
 # Format: car state + wallbox state
 CHARGING_STATES = {
-    2: "no_vehicle_no_charging",         # A1: No vehicle plugged, wallbox doesn't allow
-    3: "no_vehicle_wallbox_ready",       # A2: No vehicle plugged, wallbox allows
-    4: "vehicle_plugged_no_charging",    # B1: Vehicle plugged, no charge request, wallbox doesn't allow
+    2: "no_vehicle_no_charging",  # A1: No vehicle plugged, wallbox doesn't allow
+    3: "no_vehicle_wallbox_ready",  # A2: No vehicle plugged, wallbox allows
+    4: "vehicle_plugged_no_charging",  # B1: Vehicle plugged, no charge request, wallbox doesn't allow
     5: "vehicle_plugged_wallbox_ready",  # B2: Vehicle plugged, no charge request, wallbox allows
-    6: "charge_request_no_charging",     # C1: Vehicle plugged, charge request, wallbox doesn't allow
-    7: "charging",                       # C2: Vehicle plugged, charge request, wallbox allows
+    6: "charge_request_no_charging",  # C1: Vehicle plugged, charge request, wallbox doesn't allow
+    7: "charging",  # C2: Vehicle plugged, charge request, wallbox allows
     8: "derating",
     9: "error",
     10: "wallbox_locked",
@@ -94,20 +95,26 @@ PHASE_SWITCH_STATES = {
 # Model/Item Number Mapping
 MODEL_MAPPING = {
     # connect.business 11 kW
-    "00.779.2964": "connect.business 11kW", # (5m)
-    "00.779.2965": "connect.business 11kW", # (7.5m)
-    "00.779.3157": "connect.business 11kW", # (7.5m mit RCD)
+    "00.779.2964": "connect.business 11kW",  # (5m)
+    "00.779.2965": "connect.business 11kW",  # (7.5m)
+    "00.779.3157": "connect.business 11kW",  # (7.5m mit RCD)
     # connect.home 11 kW
-    "00.779.2795": "connect.home 11kW", # (5m)
-    "00.779.2963": "connect.home 11kW", # (7.5m)
+    "00.779.2795": "connect.home 11kW",  # (5m)
+    "00.779.2963": "connect.home 11kW",  # (7.5m)
     # connect.solar 11 kW
-    "00.779.3056": "connect.solar 11kW", # (5m)
-    "00.779.3057": "connect.solar 11kW", # (7.5m)
+    "00.779.3056": "connect.solar 11kW",  # (5m)
+    "00.779.3057": "connect.solar 11kW",  # (7.5m)
     # Energy Control 11kW
-    "00.779.3218": "Energy Control 11kW", # (5m)
-    "00.779.3219": "Energy Control 11kW", # (7.5m)
+    "00.779.3218": "Energy Control 11kW",  # (5m)
+    "00.779.3219": "Energy Control 11kW",  # (7.5m)
     # connect.solar PRO 11 kW
-    "00.779.3162": "connect.solar PRO 11kW", # (7.5m)
+    "00.779.3162": "connect.solar PRO 11kW",  # (7.5m)
+}
+
+PHASE_SWITCHING_ITEM_NUMBERS = {
+    "00.779.3056",
+    "00.779.3057",
+    "00.779.3162",
 }
 
 
@@ -120,7 +127,9 @@ class RegisterSpec:
     count: int  # Number of registers
     decoder: Callable[[list[int]], Any]  # Function to decode raw register values
     solar_only: bool = False  # Only read for solar/solar pro models
-    scale: float | None = None  # Scaling factor for read/write (e.g., 10.0 for 0.1A resolution)
+    scale: float | None = (
+        None  # Scaling factor for read/write (e.g., 10.0 for 0.1A resolution)
+    )
 
 
 # Helper functions for decoding register values

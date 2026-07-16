@@ -1,4 +1,5 @@
 """Number platform for Amperfield Wallbox Connect."""
+
 from __future__ import annotations
 
 import logging
@@ -40,19 +41,35 @@ async def async_setup_entry(
     client: AmperfieldModbusClient = runtime_data.client
     coordinator: AmperfieldDataUpdateCoordinator = runtime_data.coordinator
     device_info: DeviceInfo = runtime_data.device_info
-    serial_number: str | None = runtime_data.serial_number
+    serial_number: str = runtime_data.serial_number
     hw_max_current: int = runtime_data.hw_max_current
 
     entities: list[NumberEntity] = [
-        AmperfieldMaxCurrentNumber(coordinator, client, device_info, serial_number, hw_max_current),
-        AmperfieldFailsafeCurrentNumber(coordinator, client, device_info, serial_number, hw_max_current),
+        AmperfieldMaxCurrentNumber(
+            coordinator, client, device_info, serial_number, hw_max_current
+        ),
+        AmperfieldFailsafeCurrentNumber(
+            coordinator, client, device_info, serial_number, hw_max_current
+        ),
     ]
 
-    if coordinator.data.get("phase_switch_state") is not None:
+    if runtime_data.supports_phase_switching:
         _LOGGER.debug("Solar/Solar PRO model detected, adding solar number controls")
-        entities.append(AmperfieldMaxPowerNumber(coordinator, client, device_info, serial_number, hw_max_current))
-        entities.append(AmperfieldPhaseSwitchDurationNumber(coordinator, client, device_info, serial_number))
-        entities.append(AmperfieldPhaseSwitchWaitingNumber(coordinator, client, device_info, serial_number))
+        entities.append(
+            AmperfieldMaxPowerNumber(
+                coordinator, client, device_info, serial_number, hw_max_current
+            )
+        )
+        entities.append(
+            AmperfieldPhaseSwitchDurationNumber(
+                coordinator, client, device_info, serial_number
+            )
+        )
+        entities.append(
+            AmperfieldPhaseSwitchWaitingNumber(
+                coordinator, client, device_info, serial_number
+            )
+        )
 
     _LOGGER.debug("Setting up %d number entities", len(entities))
     async_add_entities(entities)
@@ -63,6 +80,7 @@ class AmperfieldNumberBase(CoordinatorEntity, NumberEntity):
 
     _attr_has_entity_name = True
     _required_data_keys: list[str] = []
+    coordinator: AmperfieldDataUpdateCoordinator
 
     def __init__(
         self,
@@ -80,8 +98,7 @@ class AmperfieldNumberBase(CoordinatorEntity, NumberEntity):
 
     def _unique_id(self, suffix: str) -> str:
         """Build a stable unique_id based on serial number."""
-        prefix = self._serial_number or "amperfield"
-        return f"{prefix}_{suffix}"
+        return f"{self._serial_number}_{suffix}"
 
     async def async_added_to_hass(self) -> None:
         """Register data subscriptions when entity is added."""
@@ -299,7 +316,9 @@ class AmperfieldPhaseSwitchDurationNumber(AmperfieldNumberBase):
             _LOGGER.error("Failed to set phase switch duration to %d s", seconds)
             self._optimistic_value = None
             self.async_write_ha_state()
-            raise HomeAssistantError(f"Failed to set phase switch duration to {seconds} s")
+            raise HomeAssistantError(
+                f"Failed to set phase switch duration to {seconds} s"
+            )
         await self.coordinator.async_request_refresh()
 
 
@@ -350,5 +369,7 @@ class AmperfieldPhaseSwitchWaitingNumber(AmperfieldNumberBase):
             _LOGGER.error("Failed to set phase switch waiting time to %d s", seconds)
             self._optimistic_value = None
             self.async_write_ha_state()
-            raise HomeAssistantError(f"Failed to set phase switch waiting time to {seconds} s")
+            raise HomeAssistantError(
+                f"Failed to set phase switch waiting time to {seconds} s"
+            )
         await self.coordinator.async_request_refresh()

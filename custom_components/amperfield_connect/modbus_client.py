@@ -1,8 +1,11 @@
 """Modbus client for Amperfield Wallbox Connect."""
+
 from __future__ import annotations
 
 import asyncio
 import logging
+from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from pymodbus.client import AsyncModbusTcpClient
@@ -17,6 +20,40 @@ MODBUS_DELAY = 0.05  # 50ms
 # Keep-alive interval must stay below the wallbox watchdog default of 15 seconds.
 HEARTBEAT_INTERVAL = 10.0
 
+# Known readable ranges. Requests inside the same range can safely be combined;
+# gaps between ranges may contain reserved registers and must not be spanned.
+READ_BLOCKS: tuple[tuple[str, int, int], ...] = (
+    ("input", 4, 23),
+    ("input", 100, 101),
+    ("input", 1000, 1017),
+    ("input", 1050, 1067),
+    ("input", 1100, 1117),
+    ("input", 1250, 1290),
+    ("input", 1300, 1340),
+    ("input", 5000, 5003),
+    ("holding", 259, 259),
+    ("holding", 261, 262),
+    ("holding", 500, 505),
+)
+
+MODBUS_ILLEGAL_ADDRESS = 2
+
+
+class AmperfieldModbusError(Exception):
+    """Base exception for wallbox communication errors."""
+
+
+class AmperfieldConnectionError(AmperfieldModbusError):
+    """Raised when the wallbox cannot be reached."""
+
+
+class AmperfieldProtocolError(AmperfieldModbusError):
+    """Raised when the wallbox returns an unexpected Modbus error."""
+
+
+class AmperfieldUnsupportedRegisterError(AmperfieldProtocolError):
+    """Raised when the wallbox reports an illegal register address."""
+
 
 class AmperfieldModbusClient:
     """Async Modbus client for Amperfield Wallbox.
@@ -28,37 +65,69 @@ class AmperfieldModbusClient:
     def __init__(self, host: str, port: int) -> None:
         self.host = host
         self.port = port
-        self._client = AsyncModbusTcpClient(host=host, port=port, timeout=15, reconnect_delay=1)
+        self._client = AsyncModbusTcpClient(
+            host=host, port=port, timeout=15, reconnect_delay=1
+        )
         self._operation_lock = asyncio.Lock()  # Serialize all operations with delay
         self._heartbeat_task: asyncio.Task | None = None
         self._shutdown = False
+        self._suspended = False
         _LOGGER.debug("Initialized async Modbus client for %s:%s", host, port)
 
-    async def connect(self) -> bool:
-        """Test connection to the wallbox and start heartbeat."""
+    async def connect(self, *, start_heartbeat: bool = True) -> bool:
+        """Connect to the wallbox and optionally start the runtime heartbeat."""
         _LOGGER.debug("Testing connection to %s:%s", self.host, self.port)
         try:
-            if not self._client.connected:
-                if not await self._client.connect():
-                    _LOGGER.debug("Failed to connect to %s:%s", self.host, self.port)
-                    return False
-                _LOGGER.info("Successfully connected to wallbox at %s:%s", self.host, self.port)
+            async with self._operation_lock:
+                self._suspended = False
+                await self._ensure_connected_locked()
 
-            # Start heartbeat to keep connection alive
-            if self._heartbeat_task is None or self._heartbeat_task.done():
-                self._shutdown = False
-                self._heartbeat_task = asyncio.create_task(self._heartbeat())
-                _LOGGER.debug("Started heartbeat task")
+            if start_heartbeat:
+                self._start_heartbeat()
 
             return self._client.connected
-        except Exception as err:
+        except AmperfieldModbusError as err:
             _LOGGER.debug("Connection test failed: %s", err)
             return False
 
     async def close(self) -> None:
         """Close the connection and stop heartbeat."""
-        # Stop heartbeat
         self._shutdown = True
+        self._suspended = True
+        await self._stop_heartbeat()
+        async with self._operation_lock:
+            self._client.close()
+        _LOGGER.debug("Closed connection to %s:%s", self.host, self.port)
+
+    async def suspend(self) -> None:
+        """Temporarily stop I/O while an endpoint is reconfigured."""
+        self._suspended = True
+        await self._stop_heartbeat()
+        async with self._operation_lock:
+            self._client.close()
+        _LOGGER.debug("Suspended connection to %s:%s", self.host, self.port)
+
+    async def resume(self) -> bool:
+        """Resume a temporarily suspended runtime connection."""
+        self._suspended = False
+        self._shutdown = False
+        connected = await self.connect(start_heartbeat=True)
+        if not connected:
+            # Keep retrying in the background after a failed reconfigure rollback.
+            self._start_heartbeat()
+        return connected
+
+    def _start_heartbeat(self) -> None:
+        """Start the heartbeat task if it is not already running."""
+        if self._heartbeat_task is None or self._heartbeat_task.done():
+            self._shutdown = False
+            self._heartbeat_task = asyncio.create_task(
+                self._heartbeat(), name=f"amperfield-heartbeat-{self.host}"
+            )
+            _LOGGER.debug("Started heartbeat task")
+
+    async def _stop_heartbeat(self) -> None:
+        """Cancel and await the heartbeat task."""
         if self._heartbeat_task and not self._heartbeat_task.done():
             self._heartbeat_task.cancel()
             try:
@@ -66,20 +135,24 @@ class AmperfieldModbusClient:
             except asyncio.CancelledError:
                 pass
             _LOGGER.debug("Stopped heartbeat task")
+        self._heartbeat_task = None
 
-        self._client.close()
-        _LOGGER.debug("Closed connection to %s:%s", self.host, self.port)
-
-    async def _ensure_connected(self) -> None:
-        """Ensure the client is connected, connecting if necessary.
-
-        Raises:
-            ConnectionError: If connection fails
-        """
+    async def _ensure_connected_locked(self) -> None:
+        """Ensure the client is connected while the operation lock is held."""
+        if self._suspended:
+            raise AmperfieldConnectionError("Modbus client is temporarily suspended")
         if not self._client.connected:
             _LOGGER.debug("Client not connected, connecting...")
-            if not await self._client.connect():
-                raise ConnectionError(f"Failed to connect to {self.host}:{self.port}")
+            try:
+                connected = await self._client.connect()
+            except Exception as err:
+                raise AmperfieldConnectionError(
+                    f"Failed to connect to {self.host}:{self.port}: {err}"
+                ) from err
+            if not connected:
+                raise AmperfieldConnectionError(
+                    f"Failed to connect to {self.host}:{self.port}"
+                )
             _LOGGER.debug("Client connected successfully")
 
     async def _heartbeat(self) -> None:
@@ -95,12 +168,10 @@ class AmperfieldModbusClient:
                 if self._shutdown:
                     break
 
-                if self._client.connected:
-                    version = await self._read_using_register_map("modbus_version")
-                    if version is not None:
-                        _LOGGER.debug("Heartbeat: connection alive (modbus version: %d)", version)
-                    else:
-                        _LOGGER.debug("Heartbeat: read failed, connection may be stale")
+                version = await self._read_using_register_map("modbus_version")
+                _LOGGER.debug(
+                    "Heartbeat: connection alive (modbus version: %d)", version
+                )
             except asyncio.CancelledError:
                 _LOGGER.debug("Heartbeat task cancelled")
                 break
@@ -108,14 +179,62 @@ class AmperfieldModbusClient:
                 _LOGGER.debug("Heartbeat error: %s", err)
         _LOGGER.debug("Heartbeat task stopped")
 
-    async def _with_delay(self, operation):
+    async def _with_delay(self, operation: Callable[[], Awaitable[Any]]) -> Any:
         """Execute a Modbus operation with global delay to prevent
         overwhelming the wallbox.
         """
         async with self._operation_lock:
-            result = await operation()
+            await self._ensure_connected_locked()
+            try:
+                result = await operation()
+            except AmperfieldModbusError:
+                raise
+            except Exception as err:
+                raise AmperfieldConnectionError(
+                    f"Modbus request to {self.host}:{self.port} failed: {err}"
+                ) from err
             await asyncio.sleep(MODBUS_DELAY)
             return result
+
+    @staticmethod
+    def _raise_for_result(
+        result: Any, *, operation: str, allow_unsupported: bool = False
+    ) -> None:
+        """Raise a typed exception for a Modbus error response."""
+        if not result.isError():
+            return
+        exception_code = getattr(result, "exception_code", None)
+        if allow_unsupported and exception_code == MODBUS_ILLEGAL_ADDRESS:
+            raise AmperfieldUnsupportedRegisterError(f"{operation}: {result}")
+        raise AmperfieldProtocolError(f"{operation}: {result}")
+
+    async def _read_range(
+        self,
+        register_type: str,
+        address: int,
+        count: int,
+        *,
+        allow_unsupported: bool = False,
+    ) -> list[int]:
+        """Read and validate one Modbus register range."""
+
+        async def _read() -> list[int]:
+            if register_type == "input":
+                result = await self._client.read_input_registers(
+                    address=address, count=count
+                )
+            else:
+                result = await self._client.read_holding_registers(
+                    address=address, count=count
+                )
+            self._raise_for_result(
+                result,
+                operation=f"reading {register_type} registers {address}-{address + count - 1}",
+                allow_unsupported=allow_unsupported,
+            )
+            return result.registers
+
+        return await self._with_delay(_read)
 
     # --- Core register operations (all routing through REGISTER_MAP) ---
 
@@ -127,43 +246,19 @@ class AmperfieldModbusClient:
         Applies scaling when defined in the spec.
         """
         if data_key not in REGISTER_MAP:
-            _LOGGER.error("Data key '%s' not found in REGISTER_MAP", data_key)
-            return None
+            raise ValueError(f"Data key '{data_key}' not found in REGISTER_MAP")
 
         spec = REGISTER_MAP[data_key]
 
-        try:
-            async def _read():
-                await self._ensure_connected()
+        registers = await self._read_range(
+            spec.register_type, spec.start_address, spec.count
+        )
+        raw = spec.decoder(registers)
+        return raw / spec.scale if spec.scale else raw
 
-                if spec.register_type == "input":
-                    result = await self._client.read_input_registers(
-                        address=spec.start_address, count=spec.count
-                    )
-                else:
-                    result = await self._client.read_holding_registers(
-                        address=spec.start_address, count=spec.count
-                    )
-
-                if result.isError():
-                    _LOGGER.error(
-                        "Error reading %s register(s) at %d for key '%s': %s",
-                        spec.register_type,
-                        spec.start_address,
-                        data_key,
-                        result,
-                    )
-                    return None
-
-                raw = spec.decoder(result.registers)
-                return raw / spec.scale if spec.scale else raw
-
-            return await self._with_delay(_read)
-        except Exception as err:
-            _LOGGER.error("Exception reading %s: %s", data_key, err)
-            return None
-
-    async def _write_using_register_map(self, data_key: str, value: int | float) -> bool:
+    async def _write_using_register_map(
+        self, data_key: str, value: int | float
+    ) -> bool:
         """Write a register value using REGISTER_MAP spec for address and scale."""
         if data_key not in REGISTER_MAP:
             _LOGGER.error("Data key '%s' not found in REGISTER_MAP", data_key)
@@ -173,22 +268,21 @@ class AmperfieldModbusClient:
         write_value = round(value * spec.scale) if spec.scale else int(value)
 
         async def _write():
-            await self._ensure_connected()
             result = await self._client.write_register(
                 address=spec.start_address, value=write_value
             )
-            if result.isError():
-                _LOGGER.error(
-                    "Error writing register %d = %s for key '%s': %s",
-                    spec.start_address, write_value, data_key, result,
-                )
-                return False
-            _LOGGER.debug("Successfully wrote %s = %s (raw: %d)", data_key, value, write_value)
+            self._raise_for_result(
+                result,
+                operation=f"writing register {spec.start_address} for {data_key}",
+            )
+            _LOGGER.debug(
+                "Successfully wrote %s = %s (raw: %d)", data_key, value, write_value
+            )
             return True
 
         try:
             return await self._with_delay(_write)
-        except Exception as err:
+        except AmperfieldModbusError as err:
             _LOGGER.error("Exception writing %s = %s: %s", data_key, value, err)
             return False
 
@@ -322,7 +416,11 @@ class AmperfieldModbusClient:
 
     async def set_charging_strategy(self, strategy: int) -> bool:
         """0=manual, 1=solar."""
-        strategy_name = "manual" if strategy == 0 else "solar" if strategy == 1 else f"unknown({strategy})"
+        strategy_name = (
+            "manual"
+            if strategy == 0
+            else "solar" if strategy == 1 else f"unknown({strategy})"
+        )
         _LOGGER.info("Setting charging strategy to %s (%d)", strategy_name, strategy)
         return await self._write_using_register_map("charging_strategy", strategy)
 
@@ -336,42 +434,33 @@ class AmperfieldModbusClient:
 
     async def set_disconnect_simulation(self, enabled: bool) -> bool:
         """Enable or disable disconnect simulation."""
-        _LOGGER.info("Setting disconnect simulation to %s", "enabled" if enabled else "disabled")
-        return await self._write_using_register_map("disconnect_simulation", 1 if enabled else 0)
+        _LOGGER.info(
+            "Setting disconnect simulation to %s", "enabled" if enabled else "disabled"
+        )
+        return await self._write_using_register_map(
+            "disconnect_simulation", 1 if enabled else 0
+        )
 
     # --- Batch data fetching ---
 
-    async def _do_fetch_all_data(self) -> dict[str, Any]:
-        """Fetch all data including solar model detection.
+    async def _do_fetch_all_data(
+        self, *, supports_phase_switching: bool = False
+    ) -> dict[str, Any]:
+        """Fetch all registers appropriate for the detected wallbox model."""
+        keys = {key for key, spec in REGISTER_MAP.items() if not spec.solar_only}
+        if supports_phase_switching:
+            keys.update(key for key, spec in REGISTER_MAP.items() if spec.solar_only)
+        return await self._do_fetch_selected_data(keys)
 
-        Reads non-solar registers first, then detects solar model and reads solar registers if present.
-        """
-        # First, read all non-solar registers
-        non_solar_keys = {key for key, spec in REGISTER_MAP.items() if not spec.solar_only}
-        data = await self._do_fetch_selected_data(non_solar_keys)
-
-        # Try to detect solar model by reading max_power_set register
-        # This register exists only on solar/solar pro models
-        try:
-            test_data = await self._do_fetch_selected_data({"max_power_set"})
-            if test_data.get("max_power_set") is not None:
-                # Solar model detected, read all solar-only registers
-                _LOGGER.debug("Solar model detected, reading solar-only registers")
-                solar_keys = {key for key, spec in REGISTER_MAP.items() if spec.solar_only}
-                solar_data = await self._do_fetch_selected_data(solar_keys)
-                data.update(solar_data)
-            else:
-                _LOGGER.debug("Non-solar model detected (max_power_set returned None)")
-        except Exception as err:
-            _LOGGER.debug("Non-solar model detected (max_power_set not available): %s", err)
-
-        return data
-
-    async def fetch_all_data(self) -> dict[str, Any]:
-        """Retries once on connection error (e.g. wallbox dropped idle connection)."""
+    async def fetch_all_data(
+        self, *, supports_phase_switching: bool = False
+    ) -> dict[str, Any]:
+        """Fetch all data appropriate for the detected wallbox model."""
         _LOGGER.debug("Starting batch fetch of all sensor data")
         try:
-            data = await self._do_fetch_all_data()
+            data = await self._do_fetch_all_data(
+                supports_phase_switching=supports_phase_switching
+            )
             _LOGGER.debug(
                 "Batch fetch complete: charging_state=%s, power=%sW, current=%.1f/%.1f/%.1f A",
                 data.get("charging_state"),
@@ -394,7 +483,11 @@ class AmperfieldModbusClient:
         Returns:
             Dictionary mapping data keys to their decoded values
         """
-        _LOGGER.debug("Starting smart fetch for %d data keys: %s", len(required_keys), sorted(required_keys))
+        _LOGGER.debug(
+            "Starting smart fetch for %d data keys: %s",
+            len(required_keys),
+            sorted(required_keys),
+        )
         try:
             data = await self._do_fetch_selected_data(required_keys)
             _LOGGER.debug(
@@ -409,66 +502,98 @@ class AmperfieldModbusClient:
     async def _do_fetch_selected_data(self, required_keys: set[str]) -> dict[str, Any]:
         """Internal method to fetch selected data.
 
-        Reads all registers for each data key in a single operation, with
-        delay between each data key to prevent overwhelming the wallbox.
+        Keys in known contiguous ranges are read in a single transaction. If a
+        combined range is unsupported, it is retried per key so optional
+        registers can become unknown without hiding transport failures.
         """
-        # Ensure client is connected
-        await self._ensure_connected()
-
         data: dict[str, Any] = {}
 
-        # Iterate in sorted order to match the debug log order
-        for key in sorted(required_keys):
-            if key not in REGISTER_MAP:
-                _LOGGER.warning("Data key '%s' not found in REGISTER_MAP, skipping", key)
-                continue
+        unknown_keys = required_keys - REGISTER_MAP.keys()
+        for key in sorted(unknown_keys):
+            _LOGGER.warning("Data key '%s' not found in REGISTER_MAP, skipping", key)
 
+        grouped: dict[tuple[str, int, int], list[str]] = defaultdict(list)
+        for key in sorted(required_keys & REGISTER_MAP.keys()):
             spec = REGISTER_MAP[key]
+            matching_block = next(
+                (
+                    block
+                    for block in READ_BLOCKS
+                    if block[0] == spec.register_type
+                    and block[1] <= spec.start_address
+                    and spec.start_address + spec.count - 1 <= block[2]
+                ),
+                (
+                    spec.register_type,
+                    spec.start_address,
+                    spec.start_address + spec.count - 1,
+                ),
+            )
+            grouped[matching_block].append(key)
 
+        for (register_type, _block_start, _block_end), keys in grouped.items():
+            start = min(REGISTER_MAP[key].start_address for key in keys)
+            end = max(
+                REGISTER_MAP[key].start_address + REGISTER_MAP[key].count - 1
+                for key in keys
+            )
             try:
-                # Read all registers for this data key in one operation with delay
-                async def _read_key():
-                    if spec.register_type == "input":
-                        result = await self._client.read_input_registers(
-                            address=spec.start_address, count=spec.count
-                        )
-                    else:
-                        result = await self._client.read_holding_registers(
-                            address=spec.start_address, count=spec.count
-                        )
-
-                    if result.isError():
-                        _LOGGER.error(
-                            "Error reading %s register(s) at %d (count=%d) for key '%s': %s",
+                registers = await self._read_range(
+                    register_type,
+                    start,
+                    end - start + 1,
+                    allow_unsupported=True,
+                )
+            except AmperfieldUnsupportedRegisterError:
+                _LOGGER.debug(
+                    "Combined range %s %d-%d is not fully supported; retrying per key",
+                    register_type,
+                    start,
+                    end,
+                )
+                for key in keys:
+                    spec = REGISTER_MAP[key]
+                    try:
+                        key_registers = await self._read_range(
                             spec.register_type,
                             spec.start_address,
                             spec.count,
-                            key,
-                            result,
+                            allow_unsupported=True,
                         )
-                        return None
+                    except AmperfieldUnsupportedRegisterError:
+                        data[key] = None
                     else:
-                        # Decode the registers, applying scale if defined
-                        raw = spec.decoder(result.registers)
-                        decoded = raw / spec.scale if spec.scale else raw
-                        _LOGGER.debug(
-                            "Decoded %s (registers %d-%d): %s = %s",
-                            key,
-                            spec.start_address,
-                            spec.start_address + spec.count - 1,
-                            key,
-                            decoded,
-                        )
-                        return decoded
+                        data[key] = self._decode_value(spec, key_registers)
+                continue
 
-                # Apply global delay for each data key read
-                data[key] = await self._with_delay(_read_key)
-
-            except Exception as err:
-                _LOGGER.error("Exception reading %s: %s", key, err)
-                data[key] = None
+            for key in keys:
+                spec = REGISTER_MAP[key]
+                offset = spec.start_address - start
+                data[key] = self._decode_value(
+                    spec, registers[offset : offset + spec.count]
+                )
 
         return data
+
+    @staticmethod
+    def _decode_value(spec: Any, registers: list[int]) -> Any:
+        """Decode and scale a value according to its register specification."""
+        raw = spec.decoder(registers)
+        return raw / spec.scale if spec.scale else raw
+
+    async def probe_phase_switching(self) -> bool:
+        """Return whether the phase-switch state register is supported."""
+        spec = REGISTER_MAP["phase_switch_state"]
+        try:
+            await self._read_range(
+                spec.register_type,
+                spec.start_address,
+                spec.count,
+                allow_unsupported=True,
+            )
+        except AmperfieldUnsupportedRegisterError:
+            return False
+        return True
 
     async def fetch_device_info(self) -> dict[str, Any]:
         """Fetch device identification information."""

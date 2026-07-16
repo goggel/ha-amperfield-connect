@@ -87,6 +87,7 @@ custom_components/amperfield_connect/
 ├── sensor.py            # Sensor entities (monitoring)
 ├── number.py            # Number entities (current control)
 ├── switch.py            # Switch entities (lock control)
+├── button.py            # Momentary command entities
 ├── select.py            # Select entities (phase/strategy selection)
 ├── manifest.json        # Integration metadata
 └── strings.json         # UI text translations
@@ -104,7 +105,7 @@ custom_components/amperfield_connect/
 
 ### Adding a New Control
 
-1. Choose the appropriate platform (number, switch, select)
+1. Choose the appropriate platform (number, switch, select, button)
 2. Add register addresses to [const.py](custom_components/amperfield_connect/const.py)
 3. Add getter/setter methods to [modbus_client.py](custom_components/amperfield_connect/modbus_client.py)
 4. Create entity class in the appropriate platform file

@@ -1,4 +1,5 @@
 """Switch platform for Amperfield Wallbox Connect."""
+
 from __future__ import annotations
 
 import logging
@@ -30,17 +31,11 @@ async def async_setup_entry(
     client: AmperfieldModbusClient = runtime_data.client
     coordinator: AmperfieldDataUpdateCoordinator = runtime_data.coordinator
     device_info: DeviceInfo = runtime_data.device_info
-    serial_number: str | None = runtime_data.serial_number
+    serial_number: str = runtime_data.serial_number
 
     entities: list[SwitchEntity] = [
         AmperfieldRemoteLockSwitch(coordinator, client, device_info, serial_number),
     ]
-
-    if coordinator.data.get("phase_switch_state") is not None:
-        _LOGGER.debug("Solar/Solar PRO model detected, adding disconnect simulation switch")
-        entities.append(
-            AmperfieldDisconnectSimulationSwitch(coordinator, client, device_info, serial_number)
-        )
 
     _LOGGER.debug("Setting up %d switch entities", len(entities))
     async_add_entities(entities)
@@ -52,6 +47,7 @@ class AmperfieldRemoteLockSwitch(CoordinatorEntity, SwitchEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "remote_lock"
     _required_data_keys = ["remote_lock"]
+    coordinator: AmperfieldDataUpdateCoordinator
 
     def __init__(
         self,
@@ -64,8 +60,7 @@ class AmperfieldRemoteLockSwitch(CoordinatorEntity, SwitchEntity):
         super().__init__(coordinator)
         self.client = client
         self._attr_device_info = device_info
-        prefix = serial_number or "amperfield"
-        self._attr_unique_id = f"{prefix}_remote_lock"
+        self._attr_unique_id = f"{serial_number}_remote_lock"
         self._optimistic_is_on: bool | None = None
 
     async def async_added_to_hass(self) -> None:
@@ -82,8 +77,7 @@ class AmperfieldRemoteLockSwitch(CoordinatorEntity, SwitchEntity):
     def available(self) -> bool:
         """Return False if coordinator data for this entity is missing."""
         return (
-            self.coordinator.last_update_success
-            and self.coordinator.data.get("remote_lock") is not None
+            super().available and self.coordinator.data.get("remote_lock") is not None
         )
 
     @property
@@ -135,89 +129,4 @@ class AmperfieldRemoteLockSwitch(CoordinatorEntity, SwitchEntity):
             self._optimistic_is_on = None
             self.async_write_ha_state()
             raise HomeAssistantError("Failed to unlock charging")
-        await self.coordinator.async_request_refresh()
-
-
-class AmperfieldDisconnectSimulationSwitch(CoordinatorEntity, SwitchEntity):
-    """Switch entity for disconnect simulation control."""
-
-    _attr_has_entity_name = True
-    _attr_translation_key = "disconnect_simulation"
-    _attr_entity_registry_enabled_default = False
-    _required_data_keys = ["disconnect_simulation_status"]
-
-    def __init__(
-        self,
-        coordinator: AmperfieldDataUpdateCoordinator,
-        client: AmperfieldModbusClient,
-        device_info: DeviceInfo,
-        serial_number: str | None,
-    ) -> None:
-        """Initialize the switch entity."""
-        super().__init__(coordinator)
-        self.client = client
-        self._attr_device_info = device_info
-        prefix = serial_number or "amperfield"
-        self._attr_unique_id = f"{prefix}_disconnect_simulation"
-        self._optimistic_is_on: bool | None = None
-
-    async def async_added_to_hass(self) -> None:
-        """Register data subscriptions when entity is added."""
-        await super().async_added_to_hass()
-        self.coordinator.subscribe(self.entity_id, self._required_data_keys)
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Unregister subscriptions when entity is removed."""
-        self.coordinator.unsubscribe(self.entity_id)
-        await super().async_will_remove_from_hass()
-
-    @property
-    def available(self) -> bool:
-        """Return False if coordinator data for this entity is missing."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data.get("disconnect_simulation_status") is not None
-        )
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return true if disconnect simulation is enabled."""
-        if self._optimistic_is_on is not None:
-            return self._optimistic_is_on
-        value = self.coordinator.data.get("disconnect_simulation_status")
-        if value is None:
-            return None
-        return value == 1
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Clear optimistic state when coordinator provides fresh data."""
-        if self.coordinator.data.get("disconnect_simulation_status") is not None:
-            self._optimistic_is_on = None
-        self.async_write_ha_state()
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable disconnect simulation."""
-        _LOGGER.debug("Enabling disconnect simulation")
-        self._optimistic_is_on = True
-        self.async_write_ha_state()
-        success = await self.client.set_disconnect_simulation(True)
-        if not success:
-            _LOGGER.error("Failed to enable disconnect simulation")
-            self._optimistic_is_on = None
-            self.async_write_ha_state()
-            raise HomeAssistantError("Failed to enable disconnect simulation")
-        await self.coordinator.async_request_refresh()
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable disconnect simulation."""
-        _LOGGER.debug("Disabling disconnect simulation")
-        self._optimistic_is_on = False
-        self.async_write_ha_state()
-        success = await self.client.set_disconnect_simulation(False)
-        if not success:
-            _LOGGER.error("Failed to disable disconnect simulation")
-            self._optimistic_is_on = None
-            self.async_write_ha_state()
-            raise HomeAssistantError("Failed to disable disconnect simulation")
         await self.coordinator.async_request_refresh()

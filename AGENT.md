@@ -32,6 +32,7 @@ custom_components/amperfield_connect/
 ├── binary_sensor.py     # Binary sensors (vehicle connected, phase switching available)
 ├── number.py            # Number entities (max current, failsafe current, max power target)
 ├── switch.py            # Switch entities (remote lock)
+├── button.py            # Disconnect simulation command
 ├── select.py            # Select entities (charging strategy)
 ├── manifest.json        # Integration manifest
 ├── strings.json         # Base strings (references translations)
@@ -64,7 +65,7 @@ Individual read/write methods still exist for write operations (e.g., setting ma
 
 1. `AmperfieldModbusClient` handles low-level Modbus TCP communication
 2. `AmperfieldDataUpdateCoordinator` polls data at configurable intervals (default: 10s)
-3. All platforms (`sensor`, `binary_sensor`, `number`, `switch`, `select`) share:
+3. All platforms (`sensor`, `binary_sensor`, `number`, `switch`, `select`, `button`) share:
    - Same `coordinator` instance
    - Same `device_info` (single device per integration entry)
    - Same `client` for write operations

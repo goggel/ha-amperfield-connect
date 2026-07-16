@@ -1,4 +1,5 @@
 """Config flow for Amperfield Wallbox Connect integration."""
+
 from __future__ import annotations
 
 import logging
@@ -17,7 +18,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
-from .modbus_client import AmperfieldModbusClient
+from .modbus_client import AmperfieldModbusClient, AmperfieldModbusError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,7 +28,9 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): str,
         vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
-        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): SCAN_INTERVAL_SELECTOR,
+        vol.Optional(
+            CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
+        ): SCAN_INTERVAL_SELECTOR,
     }
 )
 
@@ -42,8 +45,10 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     client = AmperfieldModbusClient(data[CONF_HOST], data[CONF_PORT])
 
     try:
-        if not await client.connect():
-            _LOGGER.debug("Connection test failed for %s:%s", data[CONF_HOST], data[CONF_PORT])
+        if not await client.connect(start_heartbeat=False):
+            _LOGGER.debug(
+                "Connection test failed for %s:%s", data[CONF_HOST], data[CONF_PORT]
+            )
             raise CannotConnect
 
         # Verify communication by reading the Modbus version register
@@ -55,14 +60,19 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         _LOGGER.debug("Modbus version: %s", version)
 
         serial_number = await client.get_serial_number()
+        if not serial_number:
+            _LOGGER.debug("Wallbox did not return a serial number")
+            raise CannotConnect
         _LOGGER.debug("Serial number: %s", serial_number)
+    except AmperfieldModbusError as err:
+        raise CannotConnect from err
     finally:
         await client.close()
 
-    _LOGGER.info("Successfully validated connection to wallbox %s", serial_number or data[CONF_HOST])
+    _LOGGER.info("Successfully validated connection to wallbox %s", serial_number)
     return {
-        "title": f"Amperfield Wallbox {serial_number or data[CONF_HOST]}",
-        "unique_id": serial_number or data[CONF_HOST],
+        "title": f"Amperfield Wallbox {serial_number}",
+        "unique_id": serial_number,
     }
 
 
@@ -73,7 +83,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> AmperfieldOptionsFlow:
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> AmperfieldOptionsFlow:
         """Return the options flow handler."""
         return AmperfieldOptionsFlow()
 
@@ -93,11 +105,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_HOST, default=reconfigure_entry.data.get(CONF_HOST)
                         ): str,
                         vol.Required(
-                            CONF_PORT, default=reconfigure_entry.data.get(CONF_PORT, DEFAULT_PORT)
+                            CONF_PORT,
+                            default=reconfigure_entry.data.get(CONF_PORT, DEFAULT_PORT),
                         ): int,
                         vol.Optional(
                             CONF_SCAN_INTERVAL,
-                            default=reconfigure_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                            default=reconfigure_entry.data.get(
+                                CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                            ),
                         ): SCAN_INTERVAL_SELECTOR,
                     }
                 ),
@@ -105,26 +120,39 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         errors = {}
 
-        # Close the existing connection before testing the new one,
-        # since the wallbox only accepts one Modbus TCP connection at a time.
-        if hasattr(reconfigure_entry, "runtime_data"):
-            _LOGGER.debug("Closing existing connection before reconfigure validation")
-            await reconfigure_entry.runtime_data.client.close()
+        runtime_client = getattr(
+            getattr(reconfigure_entry, "runtime_data", None), "client", None
+        )
+        if runtime_client is not None:
+            _LOGGER.debug("Suspending existing connection for reconfigure validation")
+            await runtime_client.suspend()
 
         try:
-            await validate_input(self.hass, user_input)
+            info = await validate_input(self.hass, user_input)
         except CannotConnect:
             errors["base"] = "cannot_connect"
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception during reconfigure")
             errors["base"] = "unknown"
-        else:
+        finally:
+            if runtime_client is not None:
+                restored = await runtime_client.resume()
+                if not restored:
+                    _LOGGER.warning(
+                        "Could not immediately restore the existing connection"
+                    )
+
+        if not errors:
+            await self.async_set_unique_id(info["unique_id"])
+            self._abort_if_unique_id_mismatch()
             return self.async_update_reload_and_abort(
                 reconfigure_entry,
                 data_updates=user_input,
                 options={
                     **reconfigure_entry.options,
-                    CONF_SCAN_INTERVAL: user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                    CONF_SCAN_INTERVAL: user_input.get(
+                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                    ),
                 },
             )
 
@@ -133,10 +161,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_HOST, default=user_input.get(CONF_HOST)): str,
-                    vol.Required(CONF_PORT, default=user_input.get(CONF_PORT, DEFAULT_PORT)): int,
+                    vol.Required(
+                        CONF_PORT, default=user_input.get(CONF_PORT, DEFAULT_PORT)
+                    ): int,
                     vol.Optional(
                         CONF_SCAN_INTERVAL,
-                        default=user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                        default=user_input.get(
+                            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                        ),
                     ): SCAN_INTERVAL_SELECTOR,
                 }
             ),
@@ -191,7 +223,9 @@ class AmperfieldOptionsFlow(config_entries.OptionsFlow):
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_SCAN_INTERVAL, default=current_scan_interval): SCAN_INTERVAL_SELECTOR,
+                    vol.Optional(
+                        CONF_SCAN_INTERVAL, default=current_scan_interval
+                    ): SCAN_INTERVAL_SELECTOR,
                 }
             ),
         )

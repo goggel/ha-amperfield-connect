@@ -1,12 +1,16 @@
 """Binary sensor platform for Amperfield Wallbox Connect."""
+
 from __future__ import annotations
 
 import logging
 
-from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
+from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
+    BinarySensorEntity,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -26,13 +30,22 @@ async def async_setup_entry(
     runtime_data = config_entry.runtime_data
     coordinator: AmperfieldDataUpdateCoordinator = runtime_data.coordinator
     device_info: DeviceInfo = runtime_data.device_info
-    serial_number: str | None = runtime_data.serial_number
+    serial_number: str = runtime_data.serial_number
 
-    async_add_entities([
+    entities: list[BinarySensorEntity] = [
         AmperfieldVehicleConnectedBinarySensor(coordinator, device_info, serial_number),
         AmperfieldChargingAllowedBinarySensor(coordinator, device_info, serial_number),
-        AmperfieldVehicleRequestsChargingBinarySensor(coordinator, device_info, serial_number),
-    ])
+        AmperfieldVehicleRequestsChargingBinarySensor(
+            coordinator, device_info, serial_number
+        ),
+    ]
+    if runtime_data.supports_phase_switching:
+        entities.append(
+            AmperfieldDisconnectSimulationStatusBinarySensor(
+                coordinator, device_info, serial_number
+            )
+        )
+    async_add_entities(entities)
 
 
 class AmperfieldBinarySensorBase(CoordinatorEntity, BinarySensorEntity):
@@ -40,6 +53,7 @@ class AmperfieldBinarySensorBase(CoordinatorEntity, BinarySensorEntity):
 
     _attr_has_entity_name = True
     _required_data_keys: list[str] = []
+    coordinator: AmperfieldDataUpdateCoordinator
 
     def __init__(
         self,
@@ -54,8 +68,7 @@ class AmperfieldBinarySensorBase(CoordinatorEntity, BinarySensorEntity):
 
     def _unique_id(self, suffix: str) -> str:
         """Build a stable unique_id based on serial number."""
-        prefix = self._serial_number or "amperfield"
-        return f"{prefix}_{suffix}"
+        return f"{self._serial_number}_{suffix}"
 
     async def async_added_to_hass(self) -> None:
         """Register data subscriptions when entity is added."""
@@ -152,3 +165,28 @@ class AmperfieldVehicleRequestsChargingBinarySensor(AmperfieldBinarySensorBase):
         # 6: C1 (charge request, wallbox doesn't allow)
         # 7: C2 (charge request, wallbox allows = charging)
         return state in (6, 7)
+
+
+class AmperfieldDisconnectSimulationStatusBinarySensor(AmperfieldBinarySensorBase):
+    """Show whether disconnect simulation is currently active."""
+
+    _attr_translation_key = "disconnect_simulation_status"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+    _required_data_keys = ["disconnect_simulation_status"]
+
+    def __init__(
+        self,
+        coordinator: AmperfieldDataUpdateCoordinator,
+        device_info: DeviceInfo,
+        serial_number: str,
+    ) -> None:
+        """Initialize the status sensor."""
+        super().__init__(coordinator, device_info, serial_number)
+        self._attr_unique_id = self._unique_id("disconnect_simulation_status")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether disconnect simulation is active."""
+        value = self.coordinator.data.get("disconnect_simulation_status")
+        return None if value is None else value == 1
