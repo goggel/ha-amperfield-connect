@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import voluptuous as vol
 
 from homeassistant.const import CONF_HOST, CONF_PORT
 
@@ -71,6 +72,41 @@ async def test_validate_input_maps_modbus_failure_to_cannot_connect(
             MagicMock(), {CONF_HOST: "192.0.2.10", CONF_PORT: 502}
         )
     client.close.assert_awaited_once_with()
+
+
+@pytest.mark.parametrize(
+    ("host", "port"),
+    [
+        ("http://wallbox.local", 502),
+        ("wallbox.local\nforged", 502),
+        ("wallbox.local", 0),
+        ("wallbox.local", 65536),
+    ],
+)
+def test_config_schema_rejects_unsafe_endpoints(host: str, port: int) -> None:
+    """Malformed network targets must be rejected before connection attempts."""
+    with pytest.raises(vol.Invalid):
+        config_flow.STEP_USER_DATA_SCHEMA({CONF_HOST: host, CONF_PORT: port})
+
+
+@pytest.mark.asyncio
+async def test_validate_input_rejects_malformed_device_serial(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Untrusted device identity must not flow into logs or entity identifiers."""
+    client = MagicMock()
+    client.connect = AsyncMock(return_value=True)
+    client.get_modbus_version = AsyncMock(return_value=1)
+    client.get_serial_number = AsyncMock(
+        return_value="SERIAL\N{REPLACEMENT CHARACTER}FORGED"
+    )
+    client.close = AsyncMock()
+    monkeypatch.setattr(config_flow, "AmperfieldModbusClient", lambda *_: client)
+
+    with pytest.raises(config_flow.CannotConnect):
+        await config_flow.validate_input(
+            MagicMock(), {CONF_HOST: "192.0.2.10", CONF_PORT: 502}
+        )
 
 
 @pytest.mark.asyncio

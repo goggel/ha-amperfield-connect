@@ -152,18 +152,19 @@ def _decode_uint32(registers: list[int]) -> int:
 
 
 def _decode_string(registers: list[int]) -> str:
-    """Decode ASCII string from multiple registers (2 chars per register)."""
-    text = ""
+    """Decode a printable ASCII string from device-controlled registers."""
+    decoded: list[str] = []
     for register in registers:
-        high_byte = (register >> 8) & 0xFF
-        low_byte = register & 0xFF
-        if high_byte == 0:
-            break
-        text += chr(high_byte)
-        if low_byte == 0:
-            break
-        text += chr(low_byte)
-    return text
+        for byte in ((register >> 8) & 0xFF, register & 0xFF):
+            if byte == 0:
+                return "".join(decoded)
+            # The protocol specifies ASCII. Replacing controls and extended
+            # bytes prevents a hostile/misconfigured endpoint from injecting
+            # terminal controls or forged lines into Home Assistant logs.
+            decoded.append(
+                chr(byte) if 0x20 <= byte <= 0x7E else "\N{REPLACEMENT CHARACTER}"
+            )
+    return "".join(decoded)
 
 
 # Register mapping: data_key -> register specification

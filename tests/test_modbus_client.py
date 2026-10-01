@@ -145,3 +145,43 @@ async def test_phase_switch_probe_only_accepts_illegal_address(
     transport.input_handler = AsyncMock(side_effect=OSError("offline"))
     with pytest.raises(module.AmperfieldConnectionError):
         await client.probe_phase_switching()
+
+
+@pytest.mark.parametrize(
+    "host",
+    ["", "https://wallbox.local", "wallbox.local/path", "wallbox.local\nforged"],
+)
+def test_client_rejects_malformed_hosts(host: str) -> None:
+    """Connection targets must be hosts, never URLs or log-control payloads."""
+    with pytest.raises(ValueError):
+        module.AmperfieldModbusClient(host, 502)
+
+
+@pytest.mark.parametrize("port", [0, 65536, True])
+def test_client_rejects_invalid_ports(port: int) -> None:
+    """Only real TCP ports should reach the transport constructor."""
+    with pytest.raises(ValueError):
+        module.AmperfieldModbusClient("wallbox.local", port)
+
+
+@pytest.mark.asyncio
+async def test_generic_writer_enforces_allowlist_and_safe_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The generic helper must not allow arbitrary or unsafe register writes."""
+    client, transport = make_client(monkeypatch)
+
+    assert await client._write_using_register_map("charging_state", 1) is False
+    assert await client._write_using_register_map("max_current", 100) is False
+    assert await client._write_using_register_map("max_current", float("nan")) is False
+    transport.write_register.assert_not_awaited()
+
+    assert await client._write_using_register_map("max_current", 16) is True
+    transport.write_register.assert_awaited_once_with(address=261, value=160)
+
+
+def test_device_strings_cannot_inject_control_characters() -> None:
+    """Device-controlled identification values must remain safe for logs."""
+    decoder = module.REGISTER_MAP["serial_number"].decoder
+
+    assert decoder([0x4142, 0x0A43, 0x0000]) == "AB\N{REPLACEMENT CHARACTER}C"

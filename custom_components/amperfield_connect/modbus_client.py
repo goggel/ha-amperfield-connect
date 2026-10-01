@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
+import math
+import re
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -38,6 +41,93 @@ READ_BLOCKS: tuple[tuple[str, int, int], ...] = (
 
 MODBUS_ILLEGAL_ADDRESS = 2
 
+# Only these holding registers are intentionally exposed for writes. Keeping an
+# explicit allowlist prevents a future caller from turning the generic register
+# helper into an arbitrary Modbus write primitive.
+WRITABLE_DATA_KEYS = frozenset(
+    {
+        "remote_lock",
+        "max_current",
+        "failsafe_current",
+        "max_power_target",
+        "phase_switch_control",
+        "charging_strategy",
+        "phase_switch_duration",
+        "phase_switch_waiting",
+        "disconnect_simulation",
+    }
+)
+
+_HOSTNAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def normalize_host(host: str) -> str:
+    """Validate and normalize a host without accepting URLs or log controls."""
+    if not isinstance(host, str):
+        raise ValueError("Host must be a string")
+
+    host = host.strip()
+    if not host or len(host) > 253:
+        raise ValueError("Host must contain between 1 and 253 characters")
+    if any(ord(char) < 32 or ord(char) == 127 for char in host):
+        raise ValueError("Host must not contain control characters")
+    if any(char in host for char in "/?#@[]") or "://" in host:
+        raise ValueError("Host must be a hostname or IP address, not a URL")
+
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        # Colons are valid only in an IPv6 literal. IDNA conversion bounds the
+        # value to a resolvable hostname while still allowing internationalized
+        # local hostnames.
+        if ":" in host:
+            raise ValueError("Invalid IP address") from None
+        try:
+            ascii_host = host.rstrip(".").encode("idna").decode("ascii")
+        except UnicodeError as err:
+            raise ValueError("Invalid hostname") from err
+        if (
+            not ascii_host
+            or len(ascii_host) > 253
+            or not _HOSTNAME_RE.fullmatch(ascii_host)
+            or any(
+                not label
+                or len(label) > 63
+                or label.startswith("-")
+                or label.endswith("-")
+                for label in ascii_host.split(".")
+            )
+        ):
+            raise ValueError("Invalid hostname")
+
+    return host
+
+
+def validate_port(port: int) -> int:
+    """Validate a TCP port without accepting booleans as integers."""
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise ValueError("Port must be an integer between 1 and 65535")
+    return port
+
+
+def _is_allowed_write_value(data_key: str, value: int | float) -> bool:
+    """Return whether a value is safe for the documented register contract."""
+    if data_key in {"remote_lock", "disconnect_simulation"}:
+        return value in {0, 1}
+    if data_key in {"max_current", "failsafe_current"}:
+        return value == 0 or 6 <= value <= 16
+    if data_key == "max_power_target":
+        return value == 0 or 1400 <= value <= 11040
+    if data_key == "phase_switch_control":
+        return value in {1, 3}
+    if data_key == "charging_strategy":
+        return value in {0, 1}
+    if data_key == "phase_switch_duration":
+        return 15 <= value <= 900
+    if data_key == "phase_switch_waiting":
+        return 0 <= value <= 3600
+    return False
+
 
 class AmperfieldModbusError(Exception):
     """Base exception for wallbox communication errors."""
@@ -63,16 +153,16 @@ class AmperfieldModbusClient:
     """
 
     def __init__(self, host: str, port: int) -> None:
-        self.host = host
-        self.port = port
+        self.host = normalize_host(host)
+        self.port = validate_port(port)
         self._client = AsyncModbusTcpClient(
-            host=host, port=port, timeout=15, reconnect_delay=1
+            host=self.host, port=self.port, timeout=15, reconnect_delay=1
         )
         self._operation_lock = asyncio.Lock()  # Serialize all operations with delay
         self._heartbeat_task: asyncio.Task | None = None
         self._shutdown = False
         self._suspended = False
-        _LOGGER.debug("Initialized async Modbus client for %s:%s", host, port)
+        _LOGGER.debug("Initialized async Modbus client for %s:%s", self.host, self.port)
 
     async def connect(self, *, start_heartbeat: bool = True) -> bool:
         """Connect to the wallbox and optionally start the runtime heartbeat."""
@@ -265,7 +355,24 @@ class AmperfieldModbusClient:
             return False
 
         spec = REGISTER_MAP[data_key]
+        if data_key not in WRITABLE_DATA_KEYS or spec.register_type != "holding":
+            _LOGGER.error("Refusing write to non-writable data key '%s'", data_key)
+            return False
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+        ):
+            _LOGGER.error("Refusing invalid numeric value for '%s'", data_key)
+            return False
+        if not _is_allowed_write_value(data_key, value):
+            _LOGGER.error("Refusing unsafe value for '%s'", data_key)
+            return False
+
         write_value = round(value * spec.scale) if spec.scale else int(value)
+        if not 0 <= write_value <= 0xFFFF:
+            _LOGGER.error("Refusing out-of-range value for '%s'", data_key)
+            return False
 
         async def _write():
             result = await self._client.write_register(

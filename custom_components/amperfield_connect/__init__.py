@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import timedelta
+import ipaddress
 import logging
 from typing import Any
 
@@ -159,7 +160,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) -
         item_number = device_data.get("item_number")
         hw_max_current = device_data.get("hw_max_current") or 16
 
-        if not serial_number:
+        if not serial_number or "\N{REPLACEMENT CHARACTER}" in serial_number:
             raise ConfigEntryError("Wallbox did not return a hardware serial number")
 
         duplicate = next(
@@ -197,6 +198,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) -
             hw_max_current,
         )
 
+        configuration_host = host
+        try:
+            host_ip = ipaddress.ip_address(host)
+        except ValueError:
+            host_ip = None
+        if host_ip is not None and host_ip.version == 6:
+            configuration_host = f"[{host.replace('%', '%25')}]"
+
         device_info = DeviceInfo(
             identifiers={(DOMAIN, serial_number)},
             name=f"Wallbox {serial_number}",
@@ -204,7 +213,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) -
             model=model_name,
             sw_version=firmware_version,
             serial_number=serial_number,
-            configuration_url=f"http://{host}",
+            configuration_url=f"http://{configuration_host}",
         )
 
         # Read scan_interval from options first (set via OptionsFlow), fall back to entry.data

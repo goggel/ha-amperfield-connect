@@ -12,22 +12,36 @@ from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv
 
 from .const import (
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
-from .modbus_client import AmperfieldModbusClient, AmperfieldModbusError
+from .modbus_client import (
+    AmperfieldModbusClient,
+    AmperfieldModbusError,
+    normalize_host,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 SCAN_INTERVAL_SELECTOR = vol.All(vol.Coerce(int), vol.Range(min=5, max=86400))
 
+
+def _host(value: Any) -> str:
+    """Validate a config-flow host and expose a friendly schema error."""
+    try:
+        return normalize_host(cv.string(value))
+    except ValueError as err:
+        raise vol.Invalid(str(err)) from err
+
+
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_HOST): str,
-        vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
+        vol.Required(CONF_HOST): _host,
+        vol.Required(CONF_PORT, default=DEFAULT_PORT): cv.port,
         vol.Optional(
             CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
         ): SCAN_INTERVAL_SELECTOR,
@@ -60,7 +74,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         _LOGGER.debug("Modbus version: %s", version)
 
         serial_number = await client.get_serial_number()
-        if not serial_number:
+        if not serial_number or "\N{REPLACEMENT CHARACTER}" in serial_number:
             _LOGGER.debug("Wallbox did not return a serial number")
             raise CannotConnect
         _LOGGER.debug("Serial number: %s", serial_number)
@@ -103,11 +117,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     {
                         vol.Required(
                             CONF_HOST, default=reconfigure_entry.data.get(CONF_HOST)
-                        ): str,
+                        ): _host,
                         vol.Required(
                             CONF_PORT,
                             default=reconfigure_entry.data.get(CONF_PORT, DEFAULT_PORT),
-                        ): int,
+                        ): cv.port,
                         vol.Optional(
                             CONF_SCAN_INTERVAL,
                             default=reconfigure_entry.data.get(
@@ -160,10 +174,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="reconfigure",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_HOST, default=user_input.get(CONF_HOST)): str,
+                    vol.Required(CONF_HOST, default=user_input.get(CONF_HOST)): _host,
                     vol.Required(
                         CONF_PORT, default=user_input.get(CONF_PORT, DEFAULT_PORT)
-                    ): int,
+                    ): cv.port,
                     vol.Optional(
                         CONF_SCAN_INTERVAL,
                         default=user_input.get(
