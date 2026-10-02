@@ -133,7 +133,7 @@ class AmperfieldChargingStateSensor(AmperfieldSensorBase):
         state = self.coordinator.data.get("charging_state")
         if state is None:
             return None
-        return CHARGING_STATES.get(state, f"Unknown ({state})")
+        return CHARGING_STATES.get(state)
 
 
 class AmperfieldCurrentSensor(AmperfieldSensorBase):
@@ -344,7 +344,7 @@ class AmperfieldPhaseSwitchStateSensor(AmperfieldSensorBase):
         state = self.coordinator.data.get("phase_switch_state")
         if state is None:
             return None
-        return PHASE_SWITCH_STATES.get(state, f"Unknown ({state})")
+        return PHASE_SWITCH_STATES.get(state)
 
 
 class AmperfieldMaxPowerSetSensor(AmperfieldSensorBase):

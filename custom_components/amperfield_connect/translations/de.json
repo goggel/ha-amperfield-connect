@@ -34,8 +34,17 @@
       "init": {
         "title": "Wallbox-Einstellungen",
         "data": {
-          "scan_interval": "Aktualisierungsintervall (Sekunden)"
+          "scan_interval": "Aktualisierungsintervall (Sekunden)",
+          "control_mode": "Steuerungsmodus"
         }
+      }
+    }
+  },
+  "selector": {
+    "control_mode": {
+      "options": {
+        "current": "Stromsteuerung",
+        "power": "Automatische Leistungssteuerung"
       }
     }
   },

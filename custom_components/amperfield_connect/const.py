@@ -8,6 +8,10 @@ from typing import Any, Callable, Literal
 DOMAIN = "amperfield_connect"
 DEFAULT_PORT = 502
 DEFAULT_SCAN_INTERVAL = 10
+CONF_CONTROL_MODE = "control_mode"
+CONTROL_MODE_CURRENT = "current"
+CONTROL_MODE_POWER = "power"
+DEFAULT_CONTROL_MODE = CONTROL_MODE_POWER
 CONF_NAME_PREFIX = "name_prefix"
 DEFAULT_NAME_PREFIX = "Wallbox"
 

@@ -17,6 +17,9 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    CONF_CONTROL_MODE,
+    CONTROL_MODE_CURRENT,
+    DEFAULT_CONTROL_MODE,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MODEL_MAPPING,
@@ -145,13 +148,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) -
     client = AmperfieldModbusClient(host, port)
 
     try:
+        return await _async_setup_entry(hass, entry, client)
+    except BaseException:
+        # Cancellation and platform setup failures must also release the only
+        # TCP connection and the heartbeat before Home Assistant retries.
+        await client.close()
+        raise
+
+
+async def _async_setup_entry(
+    hass: HomeAssistant,
+    entry: AmperfieldConfigEntry,
+    client: AmperfieldModbusClient,
+) -> bool:
+    """Set up the entry while the caller owns failure cleanup."""
+    host = entry.data[CONF_HOST]
+    port = entry.data[CONF_PORT]
+
+    try:
         if not await client.connect():
             raise ConfigEntryNotReady(f"Cannot connect to {host}:{port}")
 
         _LOGGER.debug("Fetching device info from wallbox")
         device_data = await client.fetch_device_info()
     except Exception as err:
-        await client.close()
         raise ConfigEntryNotReady(f"Cannot connect to {host}:{port}") from err
 
     try:
@@ -183,6 +203,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) -
             supports_phase_switching = item_number in PHASE_SWITCHING_ITEM_NUMBERS
         else:
             supports_phase_switching = await client.probe_phase_switching()
+
+        client.control_mode = (
+            entry.options.get(CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE)
+            if supports_phase_switching
+            else CONTROL_MODE_CURRENT
+        )
 
         model_name = (
             MODEL_MAPPING.get(item_number, f"Unknown ({item_number})")
@@ -232,10 +258,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) -
         await coordinator.async_config_entry_first_refresh()
 
     except ConfigEntryError:
-        await client.close()
         raise
     except Exception as err:
-        await client.close()
         raise ConfigEntryNotReady(f"Failed to set up device: {err}") from err
 
     entry.runtime_data = AmperfieldRuntimeData(

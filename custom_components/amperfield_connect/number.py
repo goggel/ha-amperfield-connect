@@ -14,6 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import AmperfieldDataUpdateCoordinator
+from .const import CONTROL_MODE_CURRENT, CONTROL_MODE_POWER
 from .modbus_client import AmperfieldModbusClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -122,6 +123,11 @@ class AmperfieldMaxCurrentNumber(AmperfieldNumberBase):
     _attr_entity_category = EntityCategory.CONFIG
     _required_data_keys = ["max_current"]
 
+    @property
+    def available(self) -> bool:
+        """Allow current commands only in current control mode."""
+        return super().available and self.client.control_mode == CONTROL_MODE_CURRENT
+
     def __init__(
         self,
         coordinator: AmperfieldDataUpdateCoordinator,
@@ -224,6 +230,11 @@ class AmperfieldMaxPowerNumber(AmperfieldNumberBase):
     _attr_native_step = 100
     _attr_entity_category = EntityCategory.CONFIG
     _required_data_keys = ["max_power_target"]
+
+    @property
+    def available(self) -> bool:
+        """Allow automatic power commands only in power control mode."""
+        return super().available and self.client.control_mode == CONTROL_MODE_POWER
 
     def __init__(
         self,

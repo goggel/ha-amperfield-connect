@@ -27,7 +27,7 @@ This integration provides comprehensive monitoring and control of your Amperfiel
 - **Remote Lock** - Lock/unlock the wallbox remotely
 - **Maximum Power Target** - Set target power in Watts, wallbox automatically switches phases (solar/solar pro only)
 - **Charging Strategy** - Select Manual or Solar/Eco mode (solar/solar pro only)
-- **Disconnect Simulation** - Trigger the disconnect simulation command (solar/solar pro only)
+- **Disconnect Simulation** - Trigger a momentary disconnect simulation (solar/solar pro only); this command is not persistent
 - **Disconnect Simulation Active** - Optional diagnostic status (disabled by default)
 
 ## Installation
@@ -79,7 +79,7 @@ The wallbox can be found by:
 
 - Setting **Maximum Current** to `0A` will stop charging
 - Valid charging range: `6.0A - 16.0A` (depending on your hardware configuration)
-- Values between `0.1A and 5.9A` are **not allowed** and will be treated as `0A`
+- Values between `0.1A and 5.9A` are **rejected**; use `0A` explicitly to stop charging
 - After changing current, it's recommended to keep the value stable for at least 20 seconds
 
 ### Watchdog Timer
@@ -88,11 +88,24 @@ The integration keeps Modbus communication active with polling and a heartbeat t
 
 ### Phase Switching (Solar/Solar Pro Only)
 
+Select **Control mode** in the integration's **Options**:
+
+- **Automatic power control** (default for Solar/Solar PRO): use Maximum Power Target. Maximum Current is unavailable.
+- **Current control**: use Maximum Current. Maximum Power Target is unavailable.
+
+Other wallbox models use current control.
+
+The wallbox protocol forbids combining the power target command (register 500) with current commands (register 261) or manual phase commands (register 501). The integration rejects writes to the inactive control. Failsafe Current remains available in both modes. Changing modes reloads the integration; it does not send additional charging commands. Update existing automations to use the selected control.
+
 - Only available on `connect.solar` and `connect.solar pro` models
 - **Automatic phase switching** based on available power
 - Set the **Maximum Power Target** in Watts, and the wallbox automatically switches between 1-phase and 3-phase charging
 - Monitor the current phase state via the **Phase Switch State** sensor
 - Works in conjunction with **Charging Strategy** (Manual or Solar/Eco mode)
+
+### Disconnect Simulation (Solar/Solar Pro Only)
+
+Disconnect simulation is **not persistent**. Pressing the button sends the momentary command value `1` to register 505. It does not enable a lasting configuration setting, and no follow-up write of `0` is needed. The optional diagnostic binary sensor reports the simulation's current status.
 
 ### Energy Meters
 

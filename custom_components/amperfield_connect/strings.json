@@ -34,8 +34,17 @@
       "init": {
         "title": "Wallbox Options",
         "data": {
-          "scan_interval": "Scan Interval (seconds)"
+          "scan_interval": "Scan Interval (seconds)",
+          "control_mode": "Control mode"
         }
+      }
+    }
+  },
+  "selector": {
+    "control_mode": {
+      "options": {
+        "current": "Current control",
+        "power": "Automatic power control"
       }
     }
   },

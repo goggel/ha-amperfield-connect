@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -185,3 +186,112 @@ def test_device_strings_cannot_inject_control_characters() -> None:
     decoder = module.REGISTER_MAP["serial_number"].decoder
 
     assert decoder([0x4142, 0x0A43, 0x0000]) == "AB\N{REPLACEMENT CHARACTER}C"
+
+
+@pytest.mark.parametrize(
+    ("key", "registers", "selected"),
+    [
+        ("charging_state", [], False),
+        ("serial_number", [0x4142], False),
+        ("energy_cycle", [1], True),
+        ("charging_state", [1, 2], True),
+    ],
+)
+@pytest.mark.asyncio
+async def test_malformed_register_lengths_raise_protocol_error(
+    monkeypatch: pytest.MonkeyPatch, key: str, registers: list[int], selected: bool
+) -> None:
+    """Neither identity nor numeric decoders may accept malformed replies."""
+    client, transport = make_client(monkeypatch)
+    transport.input_handler = AsyncMock(return_value=Response(registers))
+
+    with pytest.raises(module.AmperfieldProtocolError, match="expected .* registers"):
+        if selected:
+            await client.fetch_selected_data({key})
+        else:
+            await client._read_using_register_map(key)
+
+
+@pytest.mark.asyncio
+async def test_closed_client_cannot_resume_or_reconnect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late flow rollback must never resurrect a permanently closed client."""
+    client, transport = make_client(monkeypatch)
+    transport.connect = AsyncMock(return_value=True)
+    await client.suspend()
+    await client.close()
+
+    assert await client.resume() is False
+    assert await client.connect() is False
+    client._start_heartbeat()
+    assert client._heartbeat_task is None
+    transport.connect.assert_not_awaited()
+    with pytest.raises(module.AmperfieldConnectionError, match="permanently closed"):
+        await client.get_modbus_version()
+
+
+@pytest.mark.asyncio
+async def test_resume_queued_before_close_does_not_reopen_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Terminal closure takes precedence over a rollback waiting for the lock."""
+    client, transport = make_client(monkeypatch)
+    transport.connect = AsyncMock(return_value=True)
+    await client.suspend()
+    await client._operation_lock.acquire()
+    resume = asyncio.create_task(client.resume())
+    await asyncio.sleep(0)
+    close = asyncio.create_task(client.close())
+    await asyncio.sleep(0)
+    client._operation_lock.release()
+    resumed, _ = await asyncio.gather(resume, close)
+
+    assert resumed is False
+    assert client._heartbeat_task is None
+    transport.connect.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_suspended_client_resumes_heartbeat_and_closes_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Temporary suspension remains reversible without weakening terminal close."""
+    client, transport = make_client(monkeypatch)
+    await client.suspend()
+    assert await client.connect() is False
+    assert await client.resume() is True
+    heartbeat = client._heartbeat_task
+    assert heartbeat is not None
+    assert transport.connected
+    await client.close()
+    assert heartbeat.done()
+    assert client._heartbeat_task is None
+    assert not transport.connected
+
+
+@pytest.mark.parametrize(
+    ("mode", "key", "value", "allowed"),
+    [
+        ("current", "max_current", 10, True),
+        ("current", "max_power_target", 3200, False),
+        ("power", "max_current", 0, False),
+        ("power", "max_current", 10, False),
+        ("power", "phase_switch_control", 1, False),
+        ("power", "max_power_target", 3200, True),
+        ("power", "failsafe_current", 6, True),
+    ],
+)
+@pytest.mark.asyncio
+async def test_control_modes_prevent_conflicting_register_writes(
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    key: str,
+    value: int,
+    allowed: bool,
+) -> None:
+    """Current/phase commands and automatic power commands are exclusive."""
+    client, transport = make_client(monkeypatch)
+    client.control_mode = mode
+    assert await client._write_using_register_map(key, value) is allowed
+    assert transport.write_register.await_count == int(allowed)

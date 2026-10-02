@@ -13,8 +13,13 @@ from homeassistant.const import CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
 
 from .const import (
+    CONF_CONTROL_MODE,
+    CONTROL_MODE_CURRENT,
+    CONTROL_MODE_POWER,
+    DEFAULT_CONTROL_MODE,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -109,6 +114,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle reconfiguration of an existing entry."""
         _LOGGER.debug("Starting reconfigure flow")
         reconfigure_entry = self._get_reconfigure_entry()
+        scan_interval = reconfigure_entry.options.get(
+            CONF_SCAN_INTERVAL,
+            reconfigure_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        )
 
         if user_input is None:
             return self.async_show_form(
@@ -124,9 +133,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         ): cv.port,
                         vol.Optional(
                             CONF_SCAN_INTERVAL,
-                            default=reconfigure_entry.data.get(
-                                CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                            ),
+                            default=scan_interval,
                         ): SCAN_INTERVAL_SELECTOR,
                     }
                 ),
@@ -137,11 +144,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         runtime_client = getattr(
             getattr(reconfigure_entry, "runtime_data", None), "client", None
         )
-        if runtime_client is not None:
-            _LOGGER.debug("Suspending existing connection for reconfigure validation")
-            await runtime_client.suspend()
-
         try:
+            if runtime_client is not None:
+                _LOGGER.debug(
+                    "Suspending existing connection for reconfigure validation"
+                )
+                await runtime_client.suspend()
             info = await validate_input(self.hass, user_input)
         except CannotConnect:
             errors["base"] = "cannot_connect"
@@ -149,7 +157,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.exception("Unexpected exception during reconfigure")
             errors["base"] = "unknown"
         finally:
-            if runtime_client is not None:
+            current_client = getattr(
+                getattr(reconfigure_entry, "runtime_data", None), "client", None
+            )
+            if runtime_client is not None and current_client is runtime_client:
                 restored = await runtime_client.resume()
                 if not restored:
                     _LOGGER.warning(
@@ -165,7 +176,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 options={
                     **reconfigure_entry.options,
                     CONF_SCAN_INTERVAL: user_input.get(
-                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                        CONF_SCAN_INTERVAL, scan_interval
                     ),
                 },
             )
@@ -180,9 +191,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ): cv.port,
                     vol.Optional(
                         CONF_SCAN_INTERVAL,
-                        default=user_input.get(
-                            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                        ),
+                        default=user_input.get(CONF_SCAN_INTERVAL, scan_interval),
                     ): SCAN_INTERVAL_SELECTOR,
                 }
             ),
@@ -226,23 +235,37 @@ class AmperfieldOptionsFlow(config_entries.OptionsFlow):
     ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            return self.async_create_entry(
+                title="", data={**self.config_entry.options, **user_input}
+            )
 
         current_scan_interval = self.config_entry.options.get(
             CONF_SCAN_INTERVAL,
             self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
         )
 
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_SCAN_INTERVAL, default=current_scan_interval
-                    ): SCAN_INTERVAL_SELECTOR,
-                }
-            ),
-        )
+        schema = {
+            vol.Optional(
+                CONF_SCAN_INTERVAL, default=current_scan_interval
+            ): SCAN_INTERVAL_SELECTOR,
+        }
+        runtime_data = getattr(self.config_entry, "runtime_data", None)
+        if getattr(runtime_data, "supports_phase_switching", False):
+            schema[
+                vol.Optional(
+                    CONF_CONTROL_MODE,
+                    default=self.config_entry.options.get(
+                        CONF_CONTROL_MODE, DEFAULT_CONTROL_MODE
+                    ),
+                )
+            ] = SelectSelector(
+                SelectSelectorConfig(
+                    options=[CONTROL_MODE_POWER, CONTROL_MODE_CURRENT],
+                    translation_key=CONF_CONTROL_MODE,
+                )
+            )
+
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))
 
 
 class CannotConnect(HomeAssistantError):

@@ -55,7 +55,7 @@ async def async_setup_entry(
 
 
 class AmperfieldDisconnectSimulationButton(CoordinatorEntity, ButtonEntity):
-    """Trigger the wallbox disconnect simulation command."""
+    """Trigger a momentary disconnect simulation; it is not a persistent setting."""
 
     _attr_has_entity_name = True
     _attr_translation_key = "disconnect_simulation"

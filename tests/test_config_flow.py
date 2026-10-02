@@ -7,9 +7,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import voluptuous as vol
 
-from homeassistant.const import CONF_HOST, CONF_PORT
+from homeassistant.const import CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL
 
 from custom_components.amperfield_connect import config_flow
+from custom_components.amperfield_connect.const import CONF_CONTROL_MODE
 from custom_components.amperfield_connect.modbus_client import (
     AmperfieldConnectionError,
 )
@@ -139,6 +140,101 @@ async def test_failed_reconfigure_restores_runtime_connection(
     assert result == {"type": "form"}
     runtime_client.suspend.assert_awaited_once_with()
     runtime_client.resume.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_default_uses_active_options_interval() -> None:
+    """Host edits must start from the effective polling interval."""
+    flow = MagicMock()
+    entry = flow._get_reconfigure_entry.return_value
+    entry.data = {CONF_HOST: "wallbox.local", CONF_PORT: 502, CONF_SCAN_INTERVAL: 30}
+    entry.options = {CONF_SCAN_INTERVAL: 60}
+    await config_flow.ConfigFlow.async_step_reconfigure(flow)
+    schema = flow.async_show_form.call_args.kwargs["data_schema"]
+    assert (
+        schema({CONF_HOST: "wallbox.local", CONF_PORT: 502})[CONF_SCAN_INTERVAL] == 60
+    )
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_without_interval_preserves_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Direct host submissions preserve interval and unrelated options."""
+    flow = MagicMock()
+    flow.async_set_unique_id = AsyncMock()
+    entry = flow._get_reconfigure_entry.return_value
+    entry.data = {CONF_HOST: "wallbox.local", CONF_PORT: 502, CONF_SCAN_INTERVAL: 30}
+    entry.options = {CONF_SCAN_INTERVAL: 60, CONF_CONTROL_MODE: "power"}
+    entry.runtime_data = None
+    monkeypatch.setattr(
+        config_flow, "validate_input", AsyncMock(return_value={"unique_id": "SERIAL-1"})
+    )
+    await config_flow.ConfigFlow.async_step_reconfigure(
+        flow, {CONF_HOST: "new-wallbox.local", CONF_PORT: 502}
+    )
+    options = flow.async_update_reload_and_abort.call_args.kwargs["options"]
+    assert options == {CONF_SCAN_INTERVAL: 60, CONF_CONTROL_MODE: "power"}
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_does_not_resume_replaced_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reload during validation transfers ownership to a different client."""
+    flow = MagicMock()
+    entry = flow._get_reconfigure_entry.return_value
+    entry.data = {CONF_HOST: "wallbox.local", CONF_PORT: 502}
+    entry.options = {}
+    old_client = MagicMock()
+    old_client.suspend = AsyncMock()
+    old_client.resume = AsyncMock()
+    entry.runtime_data.client = old_client
+
+    async def validate(*_):
+        entry.runtime_data.client = MagicMock()
+        raise config_flow.CannotConnect
+
+    monkeypatch.setattr(config_flow, "validate_input", validate)
+    await config_flow.ConfigFlow.async_step_reconfigure(
+        flow, {CONF_HOST: "wallbox.local", CONF_PORT: 502}
+    )
+    old_client.suspend.assert_awaited_once_with()
+    old_client.resume.assert_not_awaited()
+
+
+@pytest.mark.parametrize("solar", [False, True])
+@pytest.mark.asyncio
+async def test_options_offer_control_mode_only_for_solar(solar: bool) -> None:
+    """Solar models default to power control and can select current control."""
+    flow = MagicMock()
+    entry = flow.config_entry
+    entry.data = {}
+    entry.options = {}
+    entry.runtime_data.supports_phase_switching = solar
+    await config_flow.AmperfieldOptionsFlow.async_step_init(flow)
+    schema = flow.async_show_form.call_args.kwargs["data_schema"]
+    data = schema({})
+    if solar:
+        assert data[CONF_CONTROL_MODE] == "power"
+        assert schema({CONF_CONTROL_MODE: "current"})[CONF_CONTROL_MODE] == "current"
+        with pytest.raises(vol.Invalid):
+            schema({CONF_CONTROL_MODE: "invalid"})
+    else:
+        assert CONF_CONTROL_MODE not in data
+
+
+@pytest.mark.asyncio
+async def test_options_interval_edit_preserves_control_mode() -> None:
+    """Options submissions must retain any fields not present in the form."""
+    flow = MagicMock()
+    flow.config_entry.options = {CONF_CONTROL_MODE: "power", CONF_SCAN_INTERVAL: 30}
+    await config_flow.AmperfieldOptionsFlow.async_step_init(
+        flow, {CONF_SCAN_INTERVAL: 60}
+    )
+    flow.async_create_entry.assert_called_once_with(
+        title="", data={CONF_CONTROL_MODE: "power", CONF_SCAN_INTERVAL: 60}
+    )
 
 
 @pytest.mark.asyncio

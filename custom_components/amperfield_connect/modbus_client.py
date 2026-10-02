@@ -13,7 +13,7 @@ from typing import Any
 
 from pymodbus.client import AsyncModbusTcpClient
 
-from .const import REGISTER_MAP
+from .const import CONTROL_MODE_CURRENT, CONTROL_MODE_POWER, REGISTER_MAP
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -162,6 +162,7 @@ class AmperfieldModbusClient:
         self._heartbeat_task: asyncio.Task | None = None
         self._shutdown = False
         self._suspended = False
+        self.control_mode = CONTROL_MODE_CURRENT
         _LOGGER.debug("Initialized async Modbus client for %s:%s", self.host, self.port)
 
     async def connect(self, *, start_heartbeat: bool = True) -> bool:
@@ -169,7 +170,6 @@ class AmperfieldModbusClient:
         _LOGGER.debug("Testing connection to %s:%s", self.host, self.port)
         try:
             async with self._operation_lock:
-                self._suspended = False
                 await self._ensure_connected_locked()
 
             if start_heartbeat:
@@ -199,8 +199,10 @@ class AmperfieldModbusClient:
 
     async def resume(self) -> bool:
         """Resume a temporarily suspended runtime connection."""
-        self._suspended = False
-        self._shutdown = False
+        async with self._operation_lock:
+            if self._shutdown:
+                return False
+            self._suspended = False
         connected = await self.connect(start_heartbeat=True)
         if not connected:
             # Keep retrying in the background after a failed reconfigure rollback.
@@ -209,8 +211,9 @@ class AmperfieldModbusClient:
 
     def _start_heartbeat(self) -> None:
         """Start the heartbeat task if it is not already running."""
+        if self._shutdown or self._suspended:
+            return
         if self._heartbeat_task is None or self._heartbeat_task.done():
-            self._shutdown = False
             self._heartbeat_task = asyncio.create_task(
                 self._heartbeat(), name=f"amperfield-heartbeat-{self.host}"
             )
@@ -229,6 +232,8 @@ class AmperfieldModbusClient:
 
     async def _ensure_connected_locked(self) -> None:
         """Ensure the client is connected while the operation lock is held."""
+        if self._shutdown:
+            raise AmperfieldConnectionError("Modbus client is permanently closed")
         if self._suspended:
             raise AmperfieldConnectionError("Modbus client is temporarily suspended")
         if not self._client.connected:
@@ -322,7 +327,13 @@ class AmperfieldModbusClient:
                 operation=f"reading {register_type} registers {address}-{address + count - 1}",
                 allow_unsupported=allow_unsupported,
             )
-            return result.registers
+            registers = result.registers
+            if len(registers) != count:
+                raise AmperfieldProtocolError(
+                    f"Reading {register_type} registers {address}-{address + count - 1}: "
+                    f"expected {count} registers, received {len(registers)}"
+                )
+            return registers
 
         return await self._with_delay(_read)
 
@@ -375,6 +386,19 @@ class AmperfieldModbusClient:
             return False
 
         async def _write():
+            # Enforce the policy under the same lock as the write, including
+            # callers that bypass Home Assistant's number entities.
+            if (
+                data_key in {"max_current", "phase_switch_control"}
+                and self.control_mode != CONTROL_MODE_CURRENT
+            ) or (
+                data_key == "max_power_target"
+                and self.control_mode != CONTROL_MODE_POWER
+            ):
+                _LOGGER.error(
+                    "Refusing %s write in %s control mode", data_key, self.control_mode
+                )
+                return False
             result = await self._client.write_register(
                 address=spec.start_address, value=write_value
             )
