@@ -1,4 +1,4 @@
-"""Button platform for Amperfield Wallbox Connect."""
+"""Button platform for Amperfied Wallbox Connect."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Amperfield button entities from a config entry."""
+    """Set up Amperfied button entities from a config entry."""
     runtime_data = config_entry.runtime_data
     if not runtime_data.supports_phase_switching:
         return

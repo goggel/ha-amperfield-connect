@@ -1,6 +1,6 @@
 {
   "domain": "amperfield_connect",
-  "name": "Heidelberg Amperfield Connect",
+  "name": "Heidelberg Amperfied Connect",
   "codeowners": ["@goggel"],
   "config_flow": true,
   "dependencies": [],

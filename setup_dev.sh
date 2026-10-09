@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "Setting up development environment for Amperfield Wallbox Connect..."
+echo "Setting up development environment for Amperfied Wallbox Connect..."
 echo ""
 
 # Check if Python is installed

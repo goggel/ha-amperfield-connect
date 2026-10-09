@@ -1,5 +1,5 @@
 @echo off
-echo Setting up development environment for Amperfield Wallbox Connect...
+echo Setting up development environment for Amperfied Wallbox Connect...
 echo.
 
 REM Check if Python is installed

@@ -1,4 +1,4 @@
-"""Modbus client for Amperfield Wallbox Connect."""
+"""Modbus client for Amperfied Wallbox Connect."""
 
 from __future__ import annotations
 
@@ -146,7 +146,7 @@ class AmperfieldUnsupportedRegisterError(AmperfieldProtocolError):
 
 
 class AmperfieldModbusClient:
-    """Async Modbus client for Amperfield Wallbox.
+    """Async Modbus client for Amperfied Wallbox.
 
     The wallbox only accepts ONE Modbus TCP connection at a time.
     The pymodbus AsyncModbusTcpClient handles connection management internally.

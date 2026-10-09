@@ -1,4 +1,4 @@
-"""Sensor platform for Amperfield Wallbox Connect."""
+"""Sensor platform for Amperfied Wallbox Connect."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Amperfield sensors from a config entry."""
+    """Set up Amperfied sensors from a config entry."""
     runtime_data = config_entry.runtime_data
     coordinator: AmperfieldDataUpdateCoordinator = runtime_data.coordinator
     device_info: DeviceInfo = runtime_data.device_info
@@ -76,7 +76,7 @@ async def async_setup_entry(
 
 
 class AmperfieldSensorBase(CoordinatorEntity, SensorEntity):
-    """Base class for Amperfield sensors."""
+    """Base class for Amperfied sensors."""
 
     _attr_has_entity_name = True
     _required_data_keys: list[str] = []

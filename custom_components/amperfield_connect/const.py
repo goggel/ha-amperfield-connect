@@ -1,4 +1,4 @@
-"""Constants for the Amperfield Wallbox Connect integration."""
+"""Constants for the Amperfied Wallbox Connect integration."""
 
 from __future__ import annotations
 

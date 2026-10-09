@@ -1,4 +1,4 @@
-"""Select platform for Amperfield Wallbox Connect."""
+"""Select platform for Amperfied Wallbox Connect."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Amperfield select entities from a config entry."""
+    """Set up Amperfied select entities from a config entry."""
     runtime_data = config_entry.runtime_data
     client: AmperfieldModbusClient = runtime_data.client
     coordinator: AmperfieldDataUpdateCoordinator = runtime_data.coordinator

@@ -1,5 +1,5 @@
 {
-  "name": "Amperfield Wallbox Connect",
+  "name": "Amperfied Wallbox Connect",
   "content_in_root": false,
   "render_readme": true,
   "domains": ["sensor", "binary_sensor", "number", "switch", "select"],

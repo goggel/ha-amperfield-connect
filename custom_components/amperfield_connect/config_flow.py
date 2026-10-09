@@ -1,4 +1,4 @@
-"""Config flow for Amperfield Wallbox Connect integration."""
+"""Config flow for Amperfied Wallbox Connect integration."""
 
 from __future__ import annotations
 
@@ -90,13 +90,13 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     _LOGGER.info("Successfully validated connection to wallbox %s", serial_number)
     return {
-        "title": f"Amperfield Wallbox {serial_number}",
+        "title": f"Amperfied Wallbox {serial_number}",
         "unique_id": serial_number,
     }
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Amperfield Wallbox Connect."""
+    """Handle a config flow for Amperfied Wallbox Connect."""
 
     VERSION = 1
 
@@ -228,7 +228,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class AmperfieldOptionsFlow(config_entries.OptionsFlow):
-    """Handle options for Amperfield Wallbox Connect."""
+    """Handle options for Amperfied Wallbox Connect."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None

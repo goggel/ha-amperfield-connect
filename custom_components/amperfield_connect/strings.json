@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Amperfield Wallbox Connect",
-        "description": "Configure your Amperfield Wallbox connection",
+        "title": "Amperfied Wallbox Connect",
+        "description": "Configure your Amperfied Wallbox connection",
         "data": {
           "host": "IP Address or Hostname",
           "port": "Port",
@@ -12,7 +12,7 @@
       },
       "reconfigure": {
         "title": "Reconfigure Wallbox",
-        "description": "Update the connection settings for your Amperfield Wallbox",
+        "description": "Update the connection settings for your Amperfied Wallbox",
         "data": {
           "host": "IP Address or Hostname",
           "port": "Port",

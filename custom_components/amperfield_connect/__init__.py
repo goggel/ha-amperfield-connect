@@ -1,4 +1,4 @@
-"""The Amperfield Wallbox Connect integration."""
+"""The Amperfied Wallbox Connect integration."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ class AmperfieldRuntimeData:
 
 
 class AmperfieldDataUpdateCoordinator(DataUpdateCoordinator):
-    """Class to manage fetching Amperfield data with smart entity subscription tracking."""
+    """Class to manage fetching Amperfied data with smart entity subscription tracking."""
 
     def __init__(
         self,
@@ -140,11 +140,11 @@ async def async_reload_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) 
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) -> bool:
-    """Set up Amperfield Wallbox Connect from a config entry."""
+    """Set up Amperfied Wallbox Connect from a config entry."""
     host = entry.data[CONF_HOST]
     port = entry.data[CONF_PORT]
 
-    _LOGGER.debug("Setting up Amperfield Wallbox at %s:%s", host, port)
+    _LOGGER.debug("Setting up Amperfied Wallbox at %s:%s", host, port)
     client = AmperfieldModbusClient(host, port)
 
     try:
@@ -217,7 +217,7 @@ async def _async_setup_entry(
         )
 
         _LOGGER.info(
-            "Found Amperfield Wallbox: serial=%s, model=%s, firmware=%s, max_current=%dA",
+            "Found Amperfied Wallbox: serial=%s, model=%s, firmware=%s, max_current=%dA",
             serial_number,
             model_name,
             firmware_version,
@@ -235,7 +235,7 @@ async def _async_setup_entry(
         device_info = DeviceInfo(
             identifiers={(DOMAIN, serial_number)},
             name=f"Wallbox {serial_number}",
-            manufacturer="Amperfield",
+            manufacturer="Amperfied",
             model=model_name,
             sw_version=firmware_version,
             serial_number=serial_number,
@@ -275,17 +275,17 @@ async def _async_setup_entry(
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
-    _LOGGER.info("Amperfield Wallbox integration setup complete for %s", serial_number)
+    _LOGGER.info("Amperfied Wallbox integration setup complete for %s", serial_number)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: AmperfieldConfigEntry) -> bool:
     """Unload a config entry."""
-    _LOGGER.debug("Unloading Amperfield Wallbox integration")
+    _LOGGER.debug("Unloading Amperfied Wallbox integration")
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         await entry.runtime_data.client.close()
         # Wait for wallbox to release the TCP socket (only accepts one connection)
         await asyncio.sleep(2)
-        _LOGGER.info("Amperfield Wallbox integration unloaded")
+        _LOGGER.info("Amperfied Wallbox integration unloaded")
 
     return unload_ok

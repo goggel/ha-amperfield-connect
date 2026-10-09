@@ -1,4 +1,4 @@
-"""Tests for the Amperfield Modbus client."""
+"""Tests for the Amperfied Modbus client."""
 
 from __future__ import annotations
 

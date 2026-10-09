@@ -1,4 +1,4 @@
-# Contributing to Amperfield Wallbox Connect Integration
+# Contributing to Amperfied Wallbox Connect Integration
 
 Thank you for your interest in contributing! This guide will help you set up your development environment.
 
@@ -137,8 +137,8 @@ custom_components/amperfield_connect/
 
 ## Getting Help
 
-- Check existing [GitHub Issues](https://github.com/benja/ha-amperfield-connect/issues)
-- Review the [Modbus documentation](AMPERFIED%20WALLBOX%20CONNECT%20SERIES%20reduced.md)
+- Check existing [GitHub Issues](https://github.com/goggel/ha-amperfield-connect/issues)
+- Review the [official Amperfied Modbus documentation](https://wallbox.amperfied.com/support/wissensdatenbank/connect-series/)
 - Open a new issue for bugs or feature requests
 
 ## License

@@ -1,10 +1,10 @@
-# Amperfield Wallbox Connect - Home Assistant Integration
+# Amperfied Wallbox Connect - Home Assistant Integration
 
-This is a custom Home Assistant integration for the Amperfield Wallbox Connect Series (home, business, solar, solar pro) using Modbus TCP communication.
+This is a custom Home Assistant integration for the Amperfied Wallbox Connect Series (home, business, solar, solar pro) using Modbus TCP communication.
 
 ## Features
 
-This integration provides comprehensive monitoring and control of your Amperfield Wallbox:
+This integration provides comprehensive monitoring and control of your Amperfied Wallbox:
 
 ### Sensors
 
@@ -38,10 +38,10 @@ This integration provides comprehensive monitoring and control of your Amperfiel
 2. Go to "Integrations"
 3. Click the three dots in the top right corner
 4. Select "Custom repositories"
-5. Add this repository URL: `https://github.com/benja/ha-amperfield-connect`
+5. Add this repository URL: `https://github.com/goggel/ha-amperfield-connect`
 6. Select "Integration" as the category
 7. Click "Add"
-8. Click "Install" on the Amperfield Wallbox Connect integration
+8. Click "Install" on the Amperfied Wallbox Connect integration
 9. Restart Home Assistant
 
 ### Manual Installation
@@ -53,7 +53,7 @@ This integration provides comprehensive monitoring and control of your Amperfiel
 
 1. Go to **Settings** → **Devices & Services**
 2. Click **+ Add Integration**
-3. Search for "Amperfield Wallbox Connect"
+3. Search for "Amperfied Wallbox Connect"
 4. Enter your wallbox connection details:
    - **IP Address or Hostname**: The IP address of your wallbox (or hostname like `hdm-smart-connect-XXXXXX.fritz.box`)
    - **Port**: Modbus TCP port (default: 502)
@@ -113,10 +113,10 @@ If your wallbox has an internal MID power meter, the energy and power values are
 
 ## Supported Models
 
-- Amperfield Wallbox Connect Home (≥ V1.0.8)
-- Amperfield Wallbox Connect Business (≥ V2.0.0)
-- Amperfield Wallbox Connect Solar (≥ V2.0.1)
-- Amperfield Wallbox Connect Solar Pro (≥ V2.0.1)
+- Amperfied Wallbox Connect Home (≥ V1.0.8)
+- Amperfied Wallbox Connect Business (≥ V2.0.0)
+- Amperfied Wallbox Connect Solar (≥ V2.0.1)
+- Amperfied Wallbox Connect Solar Pro (≥ V2.0.1)
 
 ## Troubleshooting
 
@@ -142,13 +142,15 @@ If your wallbox has an internal MID power meter, the energy and power values are
 
 For issues and feature requests, please visit:
 
-- GitHub Issues: https://github.com/benja/ha-amperfield-connect/issues
-- Official Amperfield Documentation: https://www.amperfied.de/de/service-support/downloads/
+- GitHub Issues: https://github.com/goggel/ha-amperfield-connect/issues
+- Official Amperfied Documentation: https://wallbox.amperfied.com/support/wissensdatenbank/connect-series/
 
 ## License
 
-This integration is not officially affiliated with Amperfield GmbH. Use at your own risk.
+The integration code and project documentation are licensed under the [MIT License](LICENSE).
+
+This is an independent community integration, not officially affiliated with or endorsed by Amperfied GmbH. Use at your own risk.
 
 ## Credits
 
-Based on the official Amperfield Wallbox Connect Series Modbus TCP documentation (Version 1.0.8 - 2.0.4).
+Based on the [official Amperfied Wallbox Connect Series Modbus TCP documentation](https://wallbox.amperfied.com/support/wissensdatenbank/connect-series/) (Version 1.0.8 - 2.0.4). Manufacturer manuals and logos are not distributed with this project.

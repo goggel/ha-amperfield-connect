@@ -1,8 +1,8 @@
-# CLAUDE.md - Amperfield Wallbox Connect Integration
+# CLAUDE.md - Amperfied Wallbox Connect Integration
 
 ## Project Overview
 
-Home Assistant custom integration for **Heidelberg Amperfield Wallbox Connect** EV chargers. Communicates via Modbus TCP protocol.
+Home Assistant custom integration for **Heidelberg Amperfied Wallbox Connect** EV chargers. Communicates via Modbus TCP protocol.
 
 **Domain:** `amperfield_connect`
 **IoT Class:** `local_polling`

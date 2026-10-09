@@ -1,4 +1,4 @@
-"""Number platform for Amperfield Wallbox Connect."""
+"""Number platform for Amperfied Wallbox Connect."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Amperfield number entities from a config entry."""
+    """Set up Amperfied number entities from a config entry."""
     runtime_data = config_entry.runtime_data
     client: AmperfieldModbusClient = runtime_data.client
     coordinator: AmperfieldDataUpdateCoordinator = runtime_data.coordinator
@@ -77,7 +77,7 @@ async def async_setup_entry(
 
 
 class AmperfieldNumberBase(CoordinatorEntity, NumberEntity):
-    """Base class for Amperfield number entities."""
+    """Base class for Amperfied number entities."""
 
     _attr_has_entity_name = True
     _required_data_keys: list[str] = []
